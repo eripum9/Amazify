@@ -30,19 +30,28 @@ Implemented:
 - Python 3.10+
 - Amazon Music desktop app
 
-Install Amazify as a user CLI command:
+Install Amazify without Python by downloading `AmazifySetup.exe` from the GitHub Actions build artifacts or a release and running it. The installer copies a standalone `amazify.exe` into `%LOCALAPPDATA%\Programs\Amazify`, adds that folder to the user PATH, and registers a user-level uninstall entry.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+AmazifySetup.exe
 ```
 
-The installer runs `pip install --user --editable .` and adds the Python user `Scripts` directory to your user PATH when needed. Open a new terminal after installation if the `amazify` command is not visible in the current one.
+Open a new terminal after installation if the `amazify` command is not visible in the current one.
 
-For dependency-only development setup:
+For source development with Python:
 
 ```powershell
-python -m pip install -r requirements.txt
+python -m pip install -e .
 ```
+
+Build the standalone CLI and installer locally:
+
+```powershell
+python -m pip install -e ".[build]"
+python build_windows_installer.py
+```
+
+The build writes `dist\amazify.exe` and `dist\AmazifySetup.exe`.
 
 ## Run
 
@@ -146,7 +155,11 @@ Amazify treats plugins as code:
 
 ```text
 amazify/          Python companion, launcher, bridge, runtime injection
-install.ps1       Windows user installer for the amazify CLI command
+build_windows_installer.py
+                  Builds the standalone CLI and Windows installer
+.github/workflows/
+                  Windows installer artifact build
+packaging/        PyInstaller entrypoints for the CLI and installer
 plugin_catalog.json
                   GitHub-backed marketplace catalog
 sample_plugins/  Stock and example plugin source for the catalog

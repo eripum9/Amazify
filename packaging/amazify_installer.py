@@ -1,0 +1,183 @@
+from __future__ import annotations
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+import winreg
+from pathlib import Path
+
+
+APP_NAME = "Amazify"
+APP_VERSION = "0.1.0"
+EXE_NAME = "amazify.exe"
+SETUP_NAME = "AmazifySetup.exe"
+UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Amazify"
+
+
+def bundled_file(name: str) -> Path:
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return base / name
+
+
+def install_dir() -> Path:
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if not local_app_data:
+        raise RuntimeError("LOCALAPPDATA is not set")
+    return Path(local_app_data) / "Programs" / APP_NAME
+
+
+def normalize_path(path: str | Path) -> str:
+    return str(Path(path).resolve()).rstrip("\\")
+
+
+def user_path_entries() -> list[str]:
+    try:
+        raw = winreg.QueryValueEx(
+            winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment"),
+            "Path",
+        )[0]
+    except FileNotFoundError:
+        return []
+    if not isinstance(raw, str):
+        return []
+    return [entry for entry in raw.split(";") if entry.strip()]
+
+
+def write_user_path(entries: list[str]) -> None:
+    with winreg.OpenKey(
+        winreg.HKEY_CURRENT_USER,
+        "Environment",
+        0,
+        winreg.KEY_SET_VALUE,
+    ) as key:
+        winreg.SetValueEx(key, "Path", 0, winreg.REG_EXPAND_SZ, ";".join(entries))
+
+
+def add_to_user_path(path: Path) -> bool:
+    target = normalize_path(path)
+    entries = user_path_entries()
+    normalized_entries = {normalize_path(entry).lower() for entry in entries}
+    if target.lower() in normalized_entries:
+        return False
+    write_user_path([*entries, target])
+    return True
+
+
+def remove_from_user_path(path: Path) -> bool:
+    target = normalize_path(path).lower()
+    entries = user_path_entries()
+    kept = [entry for entry in entries if normalize_path(entry).lower() != target]
+    if len(kept) == len(entries):
+        return False
+    write_user_path(kept)
+    return True
+
+
+def write_uninstall_entry(target_dir: Path, setup_path: Path) -> None:
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, UNINSTALL_KEY) as key:
+        winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, APP_NAME)
+        winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, APP_VERSION)
+        winreg.SetValueEx(key, "Publisher", 0, winreg.REG_SZ, "Amazify")
+        winreg.SetValueEx(key, "InstallLocation", 0, winreg.REG_SZ, str(target_dir))
+        winreg.SetValueEx(key, "DisplayIcon", 0, winreg.REG_SZ, str(target_dir / EXE_NAME))
+        winreg.SetValueEx(
+            key,
+            "UninstallString",
+            0,
+            winreg.REG_SZ,
+            f'"{setup_path}" --uninstall',
+        )
+        winreg.SetValueEx(key, "NoModify", 0, winreg.REG_DWORD, 1)
+        winreg.SetValueEx(key, "NoRepair", 0, winreg.REG_DWORD, 1)
+
+
+def delete_uninstall_entry() -> None:
+    try:
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, UNINSTALL_KEY)
+    except FileNotFoundError:
+        pass
+
+
+def notify_environment_change() -> None:
+    try:
+        import ctypes
+
+        hwnd_broadcast = 0xFFFF
+        wm_settingchange = 0x001A
+        smto_abortifhung = 0x0002
+        result = ctypes.c_ulong()
+        ctypes.windll.user32.SendMessageTimeoutW(
+            hwnd_broadcast,
+            wm_settingchange,
+            0,
+            "Environment",
+            smto_abortifhung,
+            5000,
+            ctypes.byref(result),
+        )
+    except Exception:
+        pass
+
+
+def install() -> int:
+    source_exe = bundled_file(EXE_NAME)
+    if not source_exe.exists():
+        raise RuntimeError(f"Installer is missing bundled {EXE_NAME}")
+
+    target_dir = install_dir()
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    target_exe = target_dir / EXE_NAME
+    setup_copy = target_dir / SETUP_NAME
+    shutil.copy2(source_exe, target_exe)
+    shutil.copy2(Path(sys.executable), setup_copy)
+
+    path_changed = add_to_user_path(target_dir)
+    write_uninstall_entry(target_dir, setup_copy)
+    notify_environment_change()
+
+    print(f"{APP_NAME} installed.")
+    print(f"Installed CLI: {target_exe}")
+    print(f"Command: amazify")
+    if path_changed:
+        print(f"Added to user PATH: {target_dir}")
+        print("Open a new terminal if the command is not visible in this one yet.")
+    else:
+        print("User PATH already contains the install directory.")
+    return 0
+
+
+def uninstall() -> int:
+    target_dir = install_dir()
+    remove_from_user_path(target_dir)
+    delete_uninstall_entry()
+    notify_environment_change()
+
+    if target_dir.exists():
+        command = f'ping 127.0.0.1 -n 2 > nul & rmdir /s /q "{target_dir}"'
+        subprocess.Popen(
+            ["cmd", "/c", command],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
+    print(f"{APP_NAME} uninstalled.")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Install Amazify for the current Windows user.")
+    parser.add_argument("--uninstall", action="store_true", help="Remove Amazify from this user account.")
+    args = parser.parse_args(argv)
+    if args.uninstall:
+        return uninstall()
+    return install()
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        print(f"Install failed: {exc}", file=sys.stderr)
+        raise SystemExit(1)
