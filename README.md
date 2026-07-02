@@ -55,13 +55,13 @@ The build writes `dist\amazify.exe` and `dist\AmazifySetup.exe`.
 
 ## Run
 
-Launch or connect to Amazon Music and inject Amazify:
+Show available commands:
 
 ```powershell
 amazify
 ```
 
-The explicit subcommand works too:
+Launch or connect to Amazon Music and inject Amazify:
 
 ```powershell
 amazify run

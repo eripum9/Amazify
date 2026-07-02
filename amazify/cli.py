@@ -33,6 +33,9 @@ DEVTOOLS_PORT_PATTERN = re.compile(r"(?:DevTools port:|with DevTools port)\s*(\d
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command is None:
+        parser.print_help()
+        return 0
     if args.command == "list-candidates":
         return list_candidates(args)
     return run(args)
@@ -83,7 +86,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     candidate_parser.add_argument("--manual-launcher", default=None)
 
-    parser.set_defaults(command="run")
     return parser
 
 

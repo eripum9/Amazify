@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
 from amazify.cli import (
     connect_or_launch,
+    main,
     recent_devtools_ports,
     remember_devtools_port,
 )
@@ -28,6 +31,25 @@ def make_config(root: Path, devtools_port: int = 4444) -> RuntimeConfig:
 
 
 class CliDevToolsPortTests(unittest.TestCase):
+    def test_main_without_subcommand_prints_commands_without_running(self) -> None:
+        output = io.StringIO()
+
+        with mock.patch("amazify.cli.run") as run_command, redirect_stdout(output):
+            exit_code = main([])
+
+        self.assertEqual(exit_code, 0)
+        run_command.assert_not_called()
+        help_text = output.getvalue()
+        self.assertIn("run", help_text)
+        self.assertIn("list-candidates", help_text)
+
+    def test_main_run_subcommand_starts_runner(self) -> None:
+        with mock.patch("amazify.cli.run", return_value=0) as run_command:
+            exit_code = main(["run"])
+
+        self.assertEqual(exit_code, 0)
+        run_command.assert_called_once()
+
     def test_remember_devtools_port_writes_reusable_state(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             config = make_config(Path(temp), devtools_port=61234)
