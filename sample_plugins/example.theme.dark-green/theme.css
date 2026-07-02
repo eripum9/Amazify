@@ -1,0 +1,425 @@
+body.amazify-theme-dark-green {
+  --amazify-theme-accent: #25d366;
+  --amazify-theme-accent-hover: #39e27b;
+  --amazify-theme-accent-soft: rgba(37, 211, 102, 0.18);
+  --amazify-theme-accent-ring: rgba(37, 211, 102, 0.42);
+}
+
+body.amazify-theme-dark-green [data-amazify-root="true"] .amazify-mark {
+  background: linear-gradient(135deg, #25d366, #78f2a6);
+}
+
+body.amazify-theme-dark-green [data-amazify-panel="true"] .amazify-tab[aria-selected="true"] {
+  border-bottom-color: var(--amazify-theme-accent);
+}
+
+body.amazify-theme-dark-green [data-amazify-panel="true"] .amazify-primary,
+body.amazify-theme-dark-green [data-amazify-panel="true"] .amazify-toggle[aria-pressed="true"] {
+  background: var(--amazify-theme-accent);
+  color: #05110a;
+}
+
+body.amazify-theme-dark-green [role="slider"],
+body.amazify-theme-dark-green progress,
+body.amazify-theme-dark-green input[type="range"] {
+  accent-color: var(--amazify-theme-accent);
+}
+
+body.amazify-theme-dark-green a:hover,
+body.amazify-theme-dark-green button:hover,
+body.amazify-theme-dark-green [role="button"]:hover,
+body.amazify-theme-dark-green [tabindex]:hover {
+  --music-accent: var(--amazify-theme-accent);
+  color: var(--amazify-theme-accent-hover);
+}
+
+body.amazify-theme-dark-green button:hover svg,
+body.amazify-theme-dark-green [role="button"]:hover svg,
+body.amazify-theme-dark-green a:hover svg,
+body.amazify-theme-dark-green [aria-label]:hover svg,
+body.amazify-theme-dark-green button[aria-pressed="true"] svg,
+body.amazify-theme-dark-green [role="button"][aria-pressed="true"] svg,
+body.amazify-theme-dark-green [aria-selected="true"] svg,
+body.amazify-theme-dark-green [aria-current] svg,
+body.amazify-theme-dark-green .active svg,
+body.amazify-theme-dark-green .selected svg,
+body.amazify-theme-dark-green .isActive svg,
+body.amazify-theme-dark-green .checked svg {
+  color: var(--amazify-theme-accent-hover);
+  filter: drop-shadow(0 0 8px var(--amazify-theme-accent-ring));
+}
+
+body.amazify-theme-dark-green button:hover svg [fill]:not([fill="none"]),
+body.amazify-theme-dark-green [role="button"]:hover svg [fill]:not([fill="none"]),
+body.amazify-theme-dark-green a:hover svg [fill]:not([fill="none"]),
+body.amazify-theme-dark-green [aria-label]:hover svg [fill]:not([fill="none"]) {
+  fill: currentColor;
+}
+
+body.amazify-theme-dark-green button:hover svg [stroke]:not([stroke="none"]),
+body.amazify-theme-dark-green [role="button"]:hover svg [stroke]:not([stroke="none"]),
+body.amazify-theme-dark-green a:hover svg [stroke]:not([stroke="none"]),
+body.amazify-theme-dark-green [aria-label]:hover svg [stroke]:not([stroke="none"]) {
+  stroke: currentColor;
+}
+
+body.amazify-theme-dark-green button:hover svg use,
+body.amazify-theme-dark-green button:hover svg path,
+body.amazify-theme-dark-green button:hover svg circle,
+body.amazify-theme-dark-green button:hover svg rect,
+body.amazify-theme-dark-green button:hover svg polygon,
+body.amazify-theme-dark-green [role="button"]:hover svg use,
+body.amazify-theme-dark-green [role="button"]:hover svg path,
+body.amazify-theme-dark-green [role="button"]:hover svg circle,
+body.amazify-theme-dark-green [role="button"]:hover svg rect,
+body.amazify-theme-dark-green [role="button"]:hover svg polygon,
+body.amazify-theme-dark-green a:hover svg use,
+body.amazify-theme-dark-green a:hover svg path,
+body.amazify-theme-dark-green a:hover svg circle,
+body.amazify-theme-dark-green a:hover svg rect,
+body.amazify-theme-dark-green a:hover svg polygon,
+body.amazify-theme-dark-green [aria-label]:hover svg use,
+body.amazify-theme-dark-green [aria-label]:hover svg path,
+body.amazify-theme-dark-green [aria-label]:hover svg circle,
+body.amazify-theme-dark-green [aria-label]:hover svg rect,
+body.amazify-theme-dark-green [aria-label]:hover svg polygon {
+  fill: currentColor !important;
+}
+
+body.amazify-theme-dark-green button:hover svg line,
+body.amazify-theme-dark-green button:hover svg polyline,
+body.amazify-theme-dark-green [role="button"]:hover svg line,
+body.amazify-theme-dark-green [role="button"]:hover svg polyline,
+body.amazify-theme-dark-green a:hover svg line,
+body.amazify-theme-dark-green a:hover svg polyline,
+body.amazify-theme-dark-green [aria-label]:hover svg line,
+body.amazify-theme-dark-green [aria-label]:hover svg polyline {
+  stroke: currentColor !important;
+}
+
+body.amazify-theme-dark-green button[aria-pressed="true"],
+body.amazify-theme-dark-green [role="button"][aria-pressed="true"],
+body.amazify-theme-dark-green [aria-checked="true"],
+body.amazify-theme-dark-green [aria-selected="true"],
+body.amazify-theme-dark-green [aria-current],
+body.amazify-theme-dark-green .active,
+body.amazify-theme-dark-green .selected,
+body.amazify-theme-dark-green .isActive,
+body.amazify-theme-dark-green .checked {
+  color: var(--amazify-theme-accent-hover) !important;
+  border-color: var(--amazify-theme-accent-ring) !important;
+}
+
+body.amazify-theme-dark-green button[aria-pressed="true"].primary,
+body.amazify-theme-dark-green button[aria-checked="true"].primary,
+body.amazify-theme-dark-green [role="button"][aria-pressed="true"].primary,
+body.amazify-theme-dark-green [aria-checked="true"].primary,
+body.amazify-theme-dark-green .button[aria-pressed="true"],
+body.amazify-theme-dark-green .button[aria-checked="true"],
+body.amazify-theme-dark-green .toggle[aria-pressed="true"],
+body.amazify-theme-dark-green .toggle[aria-checked="true"] {
+  background-color: var(--amazify-theme-accent) !important;
+  color: #05110a !important;
+}
+
+body.amazify-theme-dark-green button[aria-pressed="true"].primary svg,
+body.amazify-theme-dark-green button[aria-checked="true"].primary svg,
+body.amazify-theme-dark-green [role="button"][aria-pressed="true"].primary svg,
+body.amazify-theme-dark-green [aria-checked="true"].primary svg,
+body.amazify-theme-dark-green .button[aria-pressed="true"] svg,
+body.amazify-theme-dark-green .button[aria-checked="true"] svg,
+body.amazify-theme-dark-green .toggle[aria-pressed="true"] svg,
+body.amazify-theme-dark-green .toggle[aria-checked="true"] svg {
+  color: #05110a !important;
+  filter: none;
+}
+
+body.amazify-theme-dark-green button[aria-pressed="true"].primary svg use,
+body.amazify-theme-dark-green button[aria-checked="true"].primary svg use,
+body.amazify-theme-dark-green [role="button"][aria-pressed="true"].primary svg use,
+body.amazify-theme-dark-green [aria-checked="true"].primary svg use,
+body.amazify-theme-dark-green .button[aria-pressed="true"] svg use,
+body.amazify-theme-dark-green .button[aria-checked="true"] svg use,
+body.amazify-theme-dark-green .toggle[aria-pressed="true"] svg use,
+body.amazify-theme-dark-green .toggle[aria-checked="true"] svg use,
+body.amazify-theme-dark-green button[aria-pressed="true"].primary svg path,
+body.amazify-theme-dark-green button[aria-checked="true"].primary svg path,
+body.amazify-theme-dark-green [role="button"][aria-pressed="true"].primary svg path,
+body.amazify-theme-dark-green [aria-checked="true"].primary svg path,
+body.amazify-theme-dark-green .button[aria-pressed="true"] svg path,
+body.amazify-theme-dark-green .button[aria-checked="true"] svg path,
+body.amazify-theme-dark-green .toggle[aria-pressed="true"] svg path,
+body.amazify-theme-dark-green .toggle[aria-checked="true"] svg path {
+  fill: currentColor !important;
+}
+
+body.amazify-theme-dark-green button[aria-pressed="true"] svg use,
+body.amazify-theme-dark-green button[aria-pressed="true"] svg path,
+body.amazify-theme-dark-green button[aria-pressed="true"] svg circle,
+body.amazify-theme-dark-green button[aria-pressed="true"] svg rect,
+body.amazify-theme-dark-green button[aria-pressed="true"] svg polygon,
+body.amazify-theme-dark-green [role="button"][aria-pressed="true"] svg use,
+body.amazify-theme-dark-green [role="button"][aria-pressed="true"] svg path,
+body.amazify-theme-dark-green [role="button"][aria-pressed="true"] svg circle,
+body.amazify-theme-dark-green [role="button"][aria-pressed="true"] svg rect,
+body.amazify-theme-dark-green [role="button"][aria-pressed="true"] svg polygon,
+body.amazify-theme-dark-green [aria-checked="true"] svg use,
+body.amazify-theme-dark-green [aria-checked="true"] svg path,
+body.amazify-theme-dark-green [aria-checked="true"] svg circle,
+body.amazify-theme-dark-green [aria-checked="true"] svg rect,
+body.amazify-theme-dark-green [aria-checked="true"] svg polygon,
+body.amazify-theme-dark-green [aria-selected="true"] svg use,
+body.amazify-theme-dark-green [aria-selected="true"] svg path,
+body.amazify-theme-dark-green [aria-selected="true"] svg circle,
+body.amazify-theme-dark-green [aria-selected="true"] svg rect,
+body.amazify-theme-dark-green [aria-selected="true"] svg polygon,
+body.amazify-theme-dark-green [aria-current] svg use,
+body.amazify-theme-dark-green [aria-current] svg path,
+body.amazify-theme-dark-green [aria-current] svg circle,
+body.amazify-theme-dark-green [aria-current] svg rect,
+body.amazify-theme-dark-green [aria-current] svg polygon,
+body.amazify-theme-dark-green .active svg use,
+body.amazify-theme-dark-green .active svg path,
+body.amazify-theme-dark-green .active svg circle,
+body.amazify-theme-dark-green .active svg rect,
+body.amazify-theme-dark-green .active svg polygon,
+body.amazify-theme-dark-green .selected svg use,
+body.amazify-theme-dark-green .selected svg path,
+body.amazify-theme-dark-green .selected svg circle,
+body.amazify-theme-dark-green .selected svg rect,
+body.amazify-theme-dark-green .selected svg polygon,
+body.amazify-theme-dark-green .isActive svg use,
+body.amazify-theme-dark-green .isActive svg path,
+body.amazify-theme-dark-green .isActive svg circle,
+body.amazify-theme-dark-green .isActive svg rect,
+body.amazify-theme-dark-green .isActive svg polygon,
+body.amazify-theme-dark-green .checked svg use,
+body.amazify-theme-dark-green .checked svg path,
+body.amazify-theme-dark-green .checked svg circle,
+body.amazify-theme-dark-green .checked svg rect,
+body.amazify-theme-dark-green .checked svg polygon {
+  fill: currentColor !important;
+}
+
+body.amazify-theme-dark-green button[aria-pressed="true"] svg line,
+body.amazify-theme-dark-green button[aria-pressed="true"] svg polyline,
+body.amazify-theme-dark-green [role="button"][aria-pressed="true"] svg line,
+body.amazify-theme-dark-green [role="button"][aria-pressed="true"] svg polyline,
+body.amazify-theme-dark-green [aria-checked="true"] svg line,
+body.amazify-theme-dark-green [aria-checked="true"] svg polyline,
+body.amazify-theme-dark-green [aria-selected="true"] svg line,
+body.amazify-theme-dark-green [aria-selected="true"] svg polyline,
+body.amazify-theme-dark-green [aria-current] svg line,
+body.amazify-theme-dark-green [aria-current] svg polyline,
+body.amazify-theme-dark-green .active svg line,
+body.amazify-theme-dark-green .active svg polyline,
+body.amazify-theme-dark-green .selected svg line,
+body.amazify-theme-dark-green .selected svg polyline,
+body.amazify-theme-dark-green .isActive svg line,
+body.amazify-theme-dark-green .isActive svg polyline,
+body.amazify-theme-dark-green .checked svg line,
+body.amazify-theme-dark-green .checked svg polyline {
+  stroke: currentColor !important;
+}
+
+body.amazify-theme-dark-green button:hover,
+body.amazify-theme-dark-green [role="button"]:hover,
+body.amazify-theme-dark-green [aria-pressed="true"],
+body.amazify-theme-dark-green [aria-selected="true"] {
+  border-color: var(--amazify-theme-accent-ring);
+}
+
+body.amazify-theme-dark-green [class*="play"]:hover,
+body.amazify-theme-dark-green [class*="Play"]:hover,
+body.amazify-theme-dark-green [class*="pause"]:hover,
+body.amazify-theme-dark-green [class*="Pause"]:hover,
+body.amazify-theme-dark-green [class*="more"]:hover,
+body.amazify-theme-dark-green [class*="More"]:hover,
+body.amazify-theme-dark-green [class*="favorite"]:hover,
+body.amazify-theme-dark-green [class*="Favorite"]:hover,
+body.amazify-theme-dark-green [class*="heart"]:hover,
+body.amazify-theme-dark-green [class*="Heart"]:hover {
+  color: var(--amazify-theme-accent-hover);
+}
+
+body.amazify-theme-dark-green [class~="active"],
+body.amazify-theme-dark-green [class*="-active"],
+body.amazify-theme-dark-green [class*="_active"],
+body.amazify-theme-dark-green [class*="isActive"],
+body.amazify-theme-dark-green [class~="selected"],
+body.amazify-theme-dark-green [class*="-selected"],
+body.amazify-theme-dark-green [class*="_selected"],
+body.amazify-theme-dark-green [class~="checked"],
+body.amazify-theme-dark-green [class*="-checked"],
+body.amazify-theme-dark-green [class*="_checked"],
+body.amazify-theme-dark-green [class~="favorited"],
+body.amazify-theme-dark-green [class*="-favorited"],
+body.amazify-theme-dark-green [class*="_favorited"],
+body.amazify-theme-dark-green [class~="liked"],
+body.amazify-theme-dark-green [class*="-liked"],
+body.amazify-theme-dark-green [class*="_liked"] {
+  color: var(--amazify-theme-accent-hover) !important;
+}
+
+body.amazify-theme-dark-green .nextButton:hover .button,
+body.amazify-theme-dark-green .prevButton:hover .button,
+body.amazify-theme-dark-green .playButton:hover,
+body.amazify-theme-dark-green .moreButton:hover,
+body.amazify-theme-dark-green .favoriteButton:hover {
+  color: var(--amazify-theme-accent-hover);
+  box-shadow: 0 0 0 1px var(--amazify-theme-accent-ring), 0 0 18px var(--amazify-theme-accent-soft);
+}
+
+body.amazify-theme-dark-green [style*="rgb(0, 168, 225)"],
+body.amazify-theme-dark-green [style*="rgb(37, 209, 218)"],
+body.amazify-theme-dark-green [style*="rgba(37, 209, 218"],
+body.amazify-theme-dark-green [style*="rgb(102, 223, 229)"],
+body.amazify-theme-dark-green [style*="rgba(102, 223, 229"],
+body.amazify-theme-dark-green [style*="#00a8e1"],
+body.amazify-theme-dark-green [style*="#00A8E1"],
+body.amazify-theme-dark-green [style*="#25d1da"],
+body.amazify-theme-dark-green [style*="#25D1DA"],
+body.amazify-theme-dark-green [style*="#66dfe5"],
+body.amazify-theme-dark-green [style*="#66DFE5"] {
+  color: var(--amazify-theme-accent-hover) !important;
+  fill: var(--amazify-theme-accent-hover) !important;
+  stroke: var(--amazify-theme-accent-hover) !important;
+  background-color: var(--amazify-theme-accent) !important;
+  border-color: var(--amazify-theme-accent-ring) !important;
+}
+
+body.amazify-theme-dark-green .label_body,
+body.amazify-theme-dark-green .clickable,
+body.amazify-theme-dark-green .link:hover,
+body.amazify-theme-dark-green .link:focus,
+body.amazify-theme-dark-green .entityLink.link:hover,
+body.amazify-theme-dark-green .entityLink.link:focus,
+body.amazify-theme-dark-green .loadedInPlayer .primaryContainer .entityLink.link,
+body.amazify-theme-dark-green .metadataLabel,
+body.amazify-theme-dark-green .categoryLabel,
+body.amazify-theme-dark-green .sectionLabel,
+body.amazify-theme-dark-green .settingsLabel,
+body.amazify-theme-dark-green .settingsSectionTitle,
+body.amazify-theme-dark-green .subHeader,
+body.amazify-theme-dark-green .overline {
+  color: var(--amazify-theme-accent-hover) !important;
+}
+
+body.amazify-theme-dark-green .link:active,
+body.amazify-theme-dark-green .entityLink.link:active {
+  color: rgba(57, 226, 123, 0.48) !important;
+}
+
+body.amazify-theme-dark-green .button.accent,
+body.amazify-theme-dark-green .button.accent svg,
+body.amazify-theme-dark-green .button.accent:hover,
+body.amazify-theme-dark-green .button.accent:hover svg {
+  color: var(--amazify-theme-accent-hover) !important;
+  border-color: var(--amazify-theme-accent-ring) !important;
+}
+
+body.amazify-theme-dark-green .button.accent svg use,
+body.amazify-theme-dark-green .button.accent svg path,
+body.amazify-theme-dark-green .button.accent svg circle,
+body.amazify-theme-dark-green .button.accent svg rect,
+body.amazify-theme-dark-green .button.accent svg polygon {
+  fill: currentColor !important;
+  stroke: currentColor !important;
+}
+
+body.amazify-theme-dark-green .navLink.router-link-active .navTitle,
+body.amazify-theme-dark-green .navLink.router-link-exact-active .navTitle,
+body.amazify-theme-dark-green .navLink[aria-current="page"] .navTitle,
+body.amazify-theme-dark-green .navLink.router-link-active svg,
+body.amazify-theme-dark-green .navLink.router-link-exact-active svg,
+body.amazify-theme-dark-green .navLink[aria-current="page"] svg {
+  color: var(--amazify-theme-accent-hover) !important;
+  filter: drop-shadow(0 0 8px var(--amazify-theme-accent-ring));
+}
+
+body.amazify-theme-dark-green .navLink.router-link-active svg use,
+body.amazify-theme-dark-green .navLink.router-link-exact-active svg use,
+body.amazify-theme-dark-green .navLink[aria-current="page"] svg use,
+body.amazify-theme-dark-green .navLink.router-link-active svg path,
+body.amazify-theme-dark-green .navLink.router-link-exact-active svg path,
+body.amazify-theme-dark-green .navLink[aria-current="page"] svg path {
+  fill: currentColor !important;
+  stroke: currentColor !important;
+}
+
+body.amazify-theme-dark-green .progressBarContainer .gradientBar,
+body.amazify-theme-dark-green [class*="popularity"] [class*="filled"],
+body.amazify-theme-dark-green [class*="Popularity"] [class*="filled"],
+body.amazify-theme-dark-green [class*="popularity"] [class*="active"],
+body.amazify-theme-dark-green [class*="Popularity"] [class*="active"],
+body.amazify-theme-dark-green [class*="popularity"] [class*="bar"][aria-selected="true"],
+body.amazify-theme-dark-green [class*="Popularity"] [class*="bar"][aria-selected="true"] {
+  background: linear-gradient(90deg, rgba(37, 211, 102, 0.75), var(--amazify-theme-accent)) !important;
+  background-color: var(--amazify-theme-accent) !important;
+}
+
+body.amazify-theme-dark-green .onDemandIndicator.shuffle,
+body.amazify-theme-dark-green .onDemandIndicator.shuffle svg,
+body.amazify-theme-dark-green [class*="shuffle"][class*="active"],
+body.amazify-theme-dark-green [class*="Shuffle"][class*="active"],
+body.amazify-theme-dark-green [class*="shuffle"][class*="selected"],
+body.amazify-theme-dark-green [class*="Shuffle"][class*="selected"],
+body.amazify-theme-dark-green [class*="shuffle"][aria-pressed="true"],
+body.amazify-theme-dark-green [class*="Shuffle"][aria-pressed="true"],
+body.amazify-theme-dark-green [aria-label*="shuffle"][aria-pressed="true"],
+body.amazify-theme-dark-green [aria-label*="Shuffle"][aria-pressed="true"],
+body.amazify-theme-dark-green [class*="repeat"][class*="active"],
+body.amazify-theme-dark-green [class*="Repeat"][class*="active"],
+body.amazify-theme-dark-green [class*="repeat"][aria-pressed="true"],
+body.amazify-theme-dark-green [class*="Repeat"][aria-pressed="true"] {
+  color: var(--amazify-theme-accent-hover) !important;
+  border-color: var(--amazify-theme-accent-ring) !important;
+}
+
+body.amazify-theme-dark-green .onDemandIndicator.shuffle svg use,
+body.amazify-theme-dark-green .onDemandIndicator.shuffle svg path,
+body.amazify-theme-dark-green [class*="shuffle"][class*="active"] svg use,
+body.amazify-theme-dark-green [class*="Shuffle"][class*="active"] svg use,
+body.amazify-theme-dark-green [class*="shuffle"][class*="selected"] svg use,
+body.amazify-theme-dark-green [class*="Shuffle"][class*="selected"] svg use,
+body.amazify-theme-dark-green [class*="shuffle"][aria-pressed="true"] svg use,
+body.amazify-theme-dark-green [class*="Shuffle"][aria-pressed="true"] svg use,
+body.amazify-theme-dark-green [aria-label*="shuffle"][aria-pressed="true"] svg use,
+body.amazify-theme-dark-green [aria-label*="Shuffle"][aria-pressed="true"] svg use,
+body.amazify-theme-dark-green [class*="repeat"][class*="active"] svg use,
+body.amazify-theme-dark-green [class*="Repeat"][class*="active"] svg use,
+body.amazify-theme-dark-green [class*="repeat"][aria-pressed="true"] svg use,
+body.amazify-theme-dark-green [class*="Repeat"][aria-pressed="true"] svg use,
+body.amazify-theme-dark-green [class*="shuffle"][class*="active"] svg path,
+body.amazify-theme-dark-green [class*="Shuffle"][class*="active"] svg path,
+body.amazify-theme-dark-green [class*="shuffle"][aria-pressed="true"] svg path,
+body.amazify-theme-dark-green [class*="Shuffle"][aria-pressed="true"] svg path {
+  fill: currentColor !important;
+  stroke: currentColor !important;
+}
+
+body.amazify-theme-dark-green .settingsItem:focus {
+  outline-color: var(--amazify-theme-accent) !important;
+}
+
+body.amazify-theme-dark-green .tooltip .tooltip-inner {
+  background: var(--amazify-theme-accent-soft) !important;
+  border-color: var(--amazify-theme-accent-ring) !important;
+}
+
+body.amazify-theme-dark-green .tooltip .tooltip-arrow,
+body.amazify-theme-dark-green .popover .popover-arrow {
+  border-color: var(--amazify-theme-accent) !important;
+}
+
+body.amazify-theme-dark-green ::selection {
+  background: var(--amazify-theme-accent-soft);
+}
+
+body.amazify-theme-dark-green ::-webkit-slider-thumb {
+  background: var(--amazify-theme-accent);
+}
+
+body.amazify-theme-dark-green ::-webkit-progress-value {
+  background: var(--amazify-theme-accent);
+}

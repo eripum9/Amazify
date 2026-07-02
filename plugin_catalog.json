@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "plugins": [
+    {
+      "id": "amazify.true-big-mode",
+      "channel": "stock",
+      "sourceUrl": "https://github.com/eripum9/Amazify/tree/main/sample_plugins/amazify.true-big-mode",
+      "manifest": {
+        "id": "amazify.true-big-mode",
+        "name": "True Big Mode",
+        "version": "0.1.0",
+        "author": "Amazify",
+        "type": "ui",
+        "description": "Turns Amazon Music Big Mode into a cleaner full-screen lyrics view with album-art exit behavior.",
+        "entry": "plugin.js",
+        "styles": ["style.css"],
+        "permissions": ["dom-read", "dom-write", "dom-style"],
+        "amazonMusic": {
+          "testedAppVersions": [],
+          "target": "desktop"
+        }
+      },
+      "files": [
+        {
+          "path": "manifest.json",
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.true-big-mode/manifest.json"
+        },
+        {
+          "path": "plugin.js",
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.true-big-mode/plugin.js"
+        },
+        {
+          "path": "style.css",
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.true-big-mode/style.css"
+        }
+      ]
+    },
+    {
+      "id": "amazify.resume-last-song",
+      "channel": "stock",
+      "sourceUrl": "https://github.com/eripum9/Amazify/tree/main/sample_plugins/amazify.resume-last-song",
+      "manifest": {
+        "id": "amazify.resume-last-song",
+        "name": "Resume Last Song",
+        "version": "0.1.0",
+        "author": "Amazify",
+        "type": "ui",
+        "description": "Saves the current transport track locally and tries to resume it when Amazon Music opens again.",
+        "entry": "plugin.js",
+        "styles": [],
+        "permissions": ["dom-read", "dom-write"],
+        "amazonMusic": {
+          "testedAppVersions": [],
+          "target": "desktop"
+        }
+      },
+      "files": [
+        {
+          "path": "manifest.json",
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.resume-last-song/manifest.json"
+        },
+        {
+          "path": "plugin.js",
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.resume-last-song/plugin.js"
+        }
+      ]
+    },
+    {
+      "id": "example.button.focus-mode",
+      "channel": "normal",
+      "sourceUrl": "https://github.com/eripum9/Amazify/tree/main/sample_plugins/example.button.focus-mode",
+      "manifest": {
+        "id": "example.button.focus-mode",
+        "name": "Focus Mode Button",
+        "version": "0.1.0",
+        "author": "Amazify",
+        "type": "ui",
+        "description": "Adds a compact header button that dims surrounding chrome for a quieter listening view.",
+        "entry": "plugin.js",
+        "styles": ["style.css"],
+        "permissions": ["dom-style", "dom-write"],
+        "amazonMusic": {
+          "testedAppVersions": [],
+          "target": "desktop"
+        }
+      },
+      "files": [
+        {
+          "path": "manifest.json",
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/example.button.focus-mode/manifest.json"
+        },
+        {
+          "path": "plugin.js",
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/example.button.focus-mode/plugin.js"
+        },
+        {
+          "path": "style.css",
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/example.button.focus-mode/style.css"
+        }
+      ]
+    },
+    {
+      "id": "example.theme.dark-green",
+      "channel": "normal",
+      "sourceUrl": "https://github.com/eripum9/Amazify/tree/main/sample_plugins/example.theme.dark-green",
+      "manifest": {
+        "id": "example.theme.dark-green",
+        "name": "Dark Green Theme",
+        "version": "0.1.0",
+        "author": "Amazify",
+        "type": "theme",
+        "description": "A green-accent Amazon Music theme experiment.",
+        "entry": "plugin.js",
+        "styles": ["theme.css"],
+        "permissions": ["dom-style"],
+        "amazonMusic": {
+          "testedAppVersions": [],
+          "target": "desktop"
+        }
+      },
+      "files": [
+        {
+          "path": "manifest.json",
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/example.theme.dark-green/manifest.json"
+        },
+        {
+          "path": "plugin.js",
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/example.theme.dark-green/plugin.js"
+        },
+        {
+          "path": "theme.css",
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/example.theme.dark-green/theme.css"
+        }
+      ]
+    }
+  ]
+}

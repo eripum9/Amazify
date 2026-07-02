@@ -1,0 +1,15 @@
+{
+  "id": "example.theme.dark-green",
+  "name": "Dark Green Theme",
+  "version": "0.1.0",
+  "author": "Amazify",
+  "type": "theme",
+  "description": "Adds a restrained green accent layer while keeping Amazon Music's dark interface intact.",
+  "entry": "plugin.js",
+  "styles": ["theme.css"],
+  "permissions": ["dom-style"],
+  "amazonMusic": {
+    "testedAppVersions": [],
+    "target": "desktop"
+  }
+}

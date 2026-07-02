@@ -1,0 +1,540 @@
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  max-height: none !important;
+  z-index: 2147483000 !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .background,
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .gradientOverlay {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .childViewMount,
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 {
+  width: 100vw !important;
+  max-width: none !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing #transport .additionalControls.section {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body.amazify-true-big-mode-active.amazify-true-big-mode-ready #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 .closeButtonWrapper {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing [data-amazify-true-big-mode-exit-proxy="true"] {
+  cursor: pointer !important;
+  overflow: hidden !important;
+  outline: none !important;
+  position: relative !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing [data-amazify-true-big-mode-exit-proxy="true"] .artImage {
+  display: block !important;
+  position: relative !important;
+  transition: filter 160ms ease, transform 160ms ease !important;
+  z-index: 1 !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing [data-amazify-true-big-mode-exit-proxy="true"]:hover .artImage,
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing [data-amazify-true-big-mode-exit-proxy="true"]:focus .artImage,
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing [data-amazify-true-big-mode-exit-proxy="true"].amazify-true-big-mode-hovered .artImage {
+  filter: grayscale(0.72) brightness(0.48) contrast(0.86) saturate(0.55) !important;
+  transform: scale(1.015) !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-exit-overlay {
+  position: absolute !important;
+  inset: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  z-index: 2 !important;
+  display: flex !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 100% !important;
+  min-height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  color: #fff !important;
+  background: rgba(24, 25, 27, 0.3) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: none !important;
+  transition: opacity 160ms ease !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing [data-amazify-true-big-mode-exit-proxy="true"]:hover .amazify-true-big-mode-exit-overlay,
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing [data-amazify-true-big-mode-exit-proxy="true"]:focus .amazify-true-big-mode-exit-overlay,
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing [data-amazify-true-big-mode-exit-proxy="true"].amazify-true-big-mode-hovered .amazify-true-big-mode-exit-overlay {
+  opacity: 1 !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-exit-icon {
+  position: static !important;
+  display: block !important;
+  flex: 0 0 auto !important;
+  width: 58px !important;
+  height: 58px !important;
+  box-sizing: border-box !important;
+  padding: 12px !important;
+  border-radius: 50% !important;
+  background: rgba(0, 0, 0, 0.46) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55) !important;
+  color: #fff !important;
+  fill: currentColor !important;
+  transform: none !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-exit-icon path {
+  fill: currentColor;
+}
+
+/* Spicy Lyrics-inspired True Big Mode polish. */
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing {
+  --amazify-true-big-mode-artwork: none;
+  --amazify-true-big-mode-panel-width: clamp(320px, 24vw, 560px);
+  --amazify-true-big-mode-lyrics-width: clamp(580px, 46vw, 1180px);
+  --amazify-true-big-mode-accent: rgba(20, 180, 190, 0.86);
+  background: #071012 !important;
+  color: #fff !important;
+  font-family: "Amazon Ember", "Inter", "Segoe UI", Arial, sans-serif !important;
+  overflow: hidden !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-dynamic-bg {
+  position: fixed !important;
+  inset: -8vh -8vw !important;
+  top: -8vh !important;
+  right: -8vw !important;
+  bottom: -8vh !important;
+  left: -8vw !important;
+  display: block !important;
+  width: 116vw !important;
+  height: 116vh !important;
+  min-width: 116vw !important;
+  min-height: 116vh !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  background-image: var(--amazify-true-big-mode-artwork) !important;
+  background-size: cover !important;
+  background-position: center !important;
+  filter: blur(42px) saturate(2.35) brightness(0.74) contrast(1.04) !important;
+  transform: scale(1.12) !important;
+  opacity: 0.96 !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-dynamic-bg::before,
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-dynamic-bg::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  pointer-events: none !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-dynamic-bg::before {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(116, 72, 0, 0.62), transparent 34%),
+    radial-gradient(circle at 74% 52%, rgba(0, 171, 181, 0.76), transparent 46%),
+    linear-gradient(120deg, rgba(52, 27, 0, 0.7), rgba(0, 148, 158, 0.72) 56%, rgba(0, 111, 132, 0.88)) !important;
+  mix-blend-mode: screen !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-dynamic-bg::after {
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.24), transparent 42%, rgba(0, 0, 0, 0.1)),
+    linear-gradient(0deg, rgba(5, 8, 10, 0.06), rgba(5, 8, 10, 0.2)) !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing > .background {
+  opacity: 0 !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing > .gradientOverlay {
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.18), transparent 32%, rgba(0, 0, 0, 0.08)),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.24)) !important;
+  opacity: 1 !important;
+  z-index: 0 !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .childViewMount {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing #transport {
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  opacity: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 {
+  box-sizing: border-box !important;
+  display: grid !important;
+  grid-template-columns: var(--amazify-true-big-mode-panel-width) minmax(0, var(--amazify-true-big-mode-lyrics-width)) !important;
+  gap: clamp(48px, 5vw, 112px) !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: min(92vw, 2240px) !important;
+  min-height: 100vh !important;
+  height: 100vh !important;
+  margin: 0 auto !important;
+  padding: clamp(34px, 6vh, 76px) clamp(30px, 4vw, 92px) !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 .track {
+  align-self: center !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: var(--amazify-true-big-mode-panel-width) !important;
+  min-width: 0 !important;
+  max-width: var(--amazify-true-big-mode-panel-width) !important;
+  text-align: center !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 .track .artwork {
+  width: var(--amazify-true-big-mode-panel-width) !important;
+  height: var(--amazify-true-big-mode-panel-width) !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  border-radius: 8px !important;
+  overflow: visible !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing [data-amazify-true-big-mode-exit-proxy="true"] {
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 8px !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.32) !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing [data-amazify-true-big-mode-exit-proxy="true"] .artImage {
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 8px !important;
+  object-fit: cover !important;
+  transition: filter 180ms ease, transform 180ms ease !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-progress {
+  --amazify-progress: 0%;
+  display: grid !important;
+  grid-template-columns: max-content minmax(120px, 1fr) max-content !important;
+  align-items: center !important;
+  gap: 10px !important;
+  width: calc(100% - 36px) !important;
+  margin-top: 18px !important;
+  color: rgba(255, 255, 255, 0.88) !important;
+  font-size: 14px !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.32) !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  user-select: none !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-progress[hidden] {
+  display: none !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-progress-rail {
+  position: relative !important;
+  display: block !important;
+  height: 7px !important;
+  overflow: visible !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.3) !important;
+  cursor: pointer !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-progress-fill {
+  position: absolute !important;
+  top: 0 !important;
+  right: auto !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  display: block !important;
+  height: 100% !important;
+  width: var(--amazify-progress) !important;
+  min-width: 2px !important;
+  border-radius: inherit !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.22) !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-progress-rail::after {
+  content: "" !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: var(--amazify-progress) !important;
+  width: 12px !important;
+  height: 12px !important;
+  border-radius: 999px !important;
+  background: #fff !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.32) !important;
+  transform: translate(-50%, -50%) !important;
+  opacity: 0.92 !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .track :is(.title, .primary, .primaryText, .trackTitle, .headline_3, .headline_4) {
+  max-width: 100% !important;
+  margin-top: 20px !important;
+  color: #fff !important;
+  font-size: clamp(27px, 2vw, 38px) !important;
+  font-weight: 900 !important;
+  line-height: 1.06 !important;
+  letter-spacing: 0 !important;
+  text-align: center !important;
+  text-shadow: 0 3px 18px rgba(0, 0, 0, 0.34) !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .track :is(.subtitle, .secondary, .secondaryText, .artistName) {
+  margin-top: 8px !important;
+  color: rgba(255, 255, 255, 0.74) !important;
+  font-size: clamp(17px, 1.35vw, 24px) !important;
+  font-weight: 700 !important;
+  line-height: 1.1 !important;
+  letter-spacing: 0 !important;
+  text-align: center !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-exit-overlay {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.32)),
+    rgba(0, 0, 0, 0.14) !important;
+  backdrop-filter: blur(1.5px) !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-hover-controls {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: clamp(22px, 2.55vw, 46px) !important;
+  width: 100% !important;
+  padding: 0 22px !important;
+  box-sizing: border-box !important;
+  pointer-events: auto !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-hover-control {
+  appearance: none !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #fff !important;
+  width: clamp(42px, 4.6vw, 74px) !important;
+  height: clamp(42px, 4.6vw, 74px) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+  cursor: pointer !important;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.44)) !important;
+  opacity: 0.96 !important;
+  transform: translateY(0) scale(1) !important;
+  transition: transform 150ms ease, opacity 150ms ease, background 150ms ease !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-hover-control:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  transform: translateY(-1px) scale(1.04) !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-hover-control:disabled {
+  cursor: default !important;
+  opacity: 0.28 !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-hover-control svg {
+  display: block !important;
+  width: 74% !important;
+  height: 74% !important;
+  fill: currentColor !important;
+  stroke: none !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-hover-control[data-amazify-control="playpause"] {
+  width: clamp(58px, 6vw, 92px) !important;
+  height: clamp(58px, 6vw, 92px) !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-hover-control[data-amazify-control="playpause"] svg {
+  width: 86% !important;
+  height: 86% !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-hover-control[data-playback-state="pause"] [data-amazify-play-icon],
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-hover-control:not([data-playback-state="pause"]) [data-amazify-pause-icon] {
+  display: none !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-control-active {
+  color: rgba(255, 255, 255, 0.98) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 [class*="lyric"],
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 [class*="Lyrics"] {
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(255, 255, 255, 0.32) transparent !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 .lyricsContainer,
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 .lyricsWrapper,
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 .lyricsScroller {
+  width: var(--amazify-true-big-mode-lyrics-width) !important;
+  min-width: 0 !important;
+  max-width: var(--amazify-true-big-mode-lyrics-width) !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 .lyricsLine {
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 [class*="lyric"]::-webkit-scrollbar,
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 [class*="Lyrics"]::-webkit-scrollbar {
+  width: 4px !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 [class*="lyric"]::-webkit-scrollbar-thumb,
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 [class*="Lyrics"]::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.32) !important;
+  border-radius: 999px !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-lyric-line {
+  display: block !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  color: rgba(255, 255, 255, 0.33) !important;
+  font-family: "Amazon Ember", "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-size: clamp(28px, 1.8vw, 48px) !important;
+  font-weight: 900 !important;
+  line-height: 1.28 !important;
+  letter-spacing: 0 !important;
+  margin: 0.34em 0 !important;
+  opacity: 0.58 !important;
+  overflow-wrap: break-word !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  text-align: right !important;
+  text-shadow: 0 2px 22px rgba(0, 0, 0, 0.24) !important;
+  transform: none !important;
+  transition: color 180ms ease, opacity 180ms ease, filter 180ms ease !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-lyric-active {
+  color: rgba(255, 255, 255, 0.98) !important;
+  opacity: 1 !important;
+  filter: none !important;
+  transform: none !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-letter,
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-word {
+  display: inline !important;
+  font: inherit !important;
+  letter-spacing: inherit !important;
+  line-height: inherit !important;
+  color: rgba(255, 255, 255, 0.36) !important;
+  opacity: 0.48 !important;
+  transform: none !important;
+  transition: color 140ms ease, opacity 140ms ease !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-lyric-active .amazify-true-big-mode-letter {
+  animation: amazify-true-big-mode-letter-reveal 620ms ease forwards !important;
+  animation-delay: calc(var(--amazify-letter-index) * 24ms) !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-word-active {
+  color: rgba(255, 255, 255, 1) !important;
+  opacity: 1 !important;
+  animation: amazify-true-big-mode-letter-reveal 180ms ease forwards !important;
+}
+
+@keyframes amazify-true-big-mode-letter-reveal {
+  0% {
+    color: rgba(255, 255, 255, 0.38);
+    opacity: 0.54;
+  }
+  100% {
+    color: rgba(255, 255, 255, 1);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 980px) {
+  body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto 1fr !important;
+    gap: 28px !important;
+    padding: 42px 28px !important;
+    overflow-y: auto !important;
+  }
+
+  body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing,
+  body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 {
+    --amazify-true-big-mode-panel-width: min(72vw, 420px);
+    --amazify-true-big-mode-lyrics-width: min(86vw, 780px);
+  }
+}
+
+@media (max-height: 760px) {
+  body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing,
+  body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 {
+    --amazify-true-big-mode-panel-width: min(44vh, 420px);
+    --amazify-true-big-mode-lyrics-width: clamp(500px, 48vw, 980px);
+  }
+
+  body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 {
+    gap: clamp(34px, 4vw, 80px) !important;
+    padding-top: 26px !important;
+    padding-bottom: 26px !important;
+  }
+
+  body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-lyric-line {
+    font-size: clamp(22px, 1.55vw, 36px) !important;
+    line-height: 1.2 !important;
+  }
+}
+
+@media (min-width: 2400px) {
+  body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing,
+  body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 {
+    --amazify-true-big-mode-panel-width: clamp(440px, 20vw, 620px);
+    --amazify-true-big-mode-lyrics-width: clamp(980px, 42vw, 1320px);
+  }
+}

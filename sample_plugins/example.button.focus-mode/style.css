@@ -1,0 +1,16 @@
+body.amazify-focus-mode [data-amazify-root="true"] .amazify-plugin-action[aria-pressed="true"] {
+  background: #00a8e1;
+  color: #061116;
+  border-color: #00a8e1;
+}
+
+body.amazify-focus-mode [role="navigation"],
+body.amazify-focus-mode aside {
+  opacity: 0.42;
+  transition: opacity 180ms ease;
+}
+
+body.amazify-focus-mode [role="navigation"]:hover,
+body.amazify-focus-mode aside:hover {
+  opacity: 1;
+}

@@ -1,0 +1,15 @@
+{
+  "id": "amazify.resume-last-song",
+  "name": "Resume Last Song",
+  "version": "0.1.0",
+  "author": "Amazify",
+  "type": "ui",
+  "description": "Saves the current transport track locally and tries to resume it when Amazon Music opens again.",
+  "entry": "plugin.js",
+  "styles": [],
+  "permissions": ["dom-read", "dom-write"],
+  "amazonMusic": {
+    "testedAppVersions": [],
+    "target": "desktop"
+  }
+}
