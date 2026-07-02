@@ -30,13 +30,13 @@ Implemented:
 - Python 3.10+
 - Amazon Music desktop app
 
-Install Amazify without Python by downloading `AmazifySetup.exe` from the GitHub Actions build artifacts or a release and running it. The installer copies a standalone `amazify.exe` into `%LOCALAPPDATA%\Programs\Amazify`, adds that folder to the user PATH, and registers a user-level uninstall entry.
+The standalone Windows installer is experimental and not published as a ready user build yet. When it is ready, `AmazifySetup.exe` will copy a standalone `amazify.exe` into `%LOCALAPPDATA%\Programs\Amazify`, add that folder to the user PATH, and register a user-level uninstall entry.
 
 ```powershell
 AmazifySetup.exe
 ```
 
-Open a new terminal after installation if the `amazify` command is not visible in the current one.
+For now, use this only for local packaging tests.
 
 For source development with Python:
 
