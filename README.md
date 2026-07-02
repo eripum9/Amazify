@@ -161,6 +161,7 @@ Amazify treats plugins as code:
 
 ```text
 amazify/          Python companion, launcher, bridge, runtime injection
+amazify/assets/   Small packaged Amazify logo used by the in-app overlay
 Build.bat
                   Builds the standalone CLI and Windows installer on Windows
 .github/workflows/

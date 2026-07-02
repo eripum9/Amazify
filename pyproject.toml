@@ -23,3 +23,6 @@ amazify = "amazify.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["amazify*"]
+
+[tool.setuptools.package-data]
+amazify = ["assets/*.png"]

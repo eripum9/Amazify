@@ -1,9 +1,19 @@
 from __future__ import annotations
 
+import base64
+from importlib import resources
 import json
 from typing import Any
 
 from . import __version__
+
+
+def _runtime_logo_data_uri() -> str:
+    try:
+        logo = resources.files("amazify").joinpath("assets/logo.png").read_bytes()
+    except (FileNotFoundError, ModuleNotFoundError, OSError):
+        return ""
+    return f"data:image/png;base64,{base64.b64encode(logo).decode('ascii')}"
 
 
 def build_runtime_script(
@@ -18,6 +28,7 @@ def build_runtime_script(
     plugins_json = json.dumps(plugins)
     catalog_plugins_json = json.dumps(catalog_plugins or [])
     version_json = json.dumps(__version__)
+    logo_data_uri_json = json.dumps(_runtime_logo_data_uri())
     return f"""
 (() => {{
   const VERSION = {version_json};
@@ -25,6 +36,7 @@ def build_runtime_script(
   const BRIDGE_TOKEN = {bridge_token_json};
   const INITIAL_PLUGINS = {plugins_json};
   const INITIAL_CATALOG_PLUGINS = {catalog_plugins_json};
+  const LOGO_DATA_URI = {logo_data_uri_json};
   const RUNTIME_STYLE_ID = "amazify-runtime-style";
   const ROOT_SELECTOR = '[data-amazify-root="true"]';
   const PANEL_SELECTOR = '[data-amazify-panel="true"]';
@@ -100,16 +112,29 @@ def build_runtime_script(
       background: #22262a;
       border-color: rgba(0,168,225,0.55);
     }}
-    .amazify-mark {{
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #00a8e1, #25d366);
-      color: #071014;
-      display: inline-grid;
-      place-items: center;
-      font-size: 12px;
-      font-weight: 900;
+    .amazify-logo {{
+      width: 20px;
+      height: 20px;
+      border-radius: 6px;
+      display: block;
+      flex: 0 0 auto;
+      object-fit: cover;
+      background: #15181b;
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.08);
+      user-select: none;
+    }}
+    .amazify-logo-menu {{
+      width: 24px;
+      height: 24px;
+      border-radius: 7px;
+    }}
+    .amazify-logo-panel {{
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+    }}
+    .amazify-logo-fallback {{
+      border: 1px solid rgba(255,255,255,0.12);
     }}
     .amazify-plugin-actions {{
       display: inline-flex;
@@ -462,6 +487,12 @@ def build_runtime_script(
     }}[char]));
   }}
 
+  function logoMarkup(className = "amazify-logo") {{
+    return LOGO_DATA_URI
+      ? `<img class="${{className}}" src="${{LOGO_DATA_URI}}" alt="" aria-hidden="true" draggable="false">`
+      : `<span class="${{className}} amazify-logo-fallback" aria-hidden="true"></span>`;
+  }}
+
   function removeRuntimeSurfaces() {{
     document.querySelectorAll(`${{ROOT_SELECTOR}}, ${{PANEL_SELECTOR}}, ${{MENU_SELECTOR}}`).forEach((node) => node.remove());
   }}
@@ -510,7 +541,7 @@ def build_runtime_script(
     button.type = "button";
     button.className = "amazify-header-button";
     button.setAttribute("aria-label", "Open Amazify");
-    button.innerHTML = '<span class="amazify-mark">A</span><span>Amazify</span>';
+    button.innerHTML = `${{logoMarkup()}}<span>Amazify</span>`;
     button.addEventListener("click", (event) => {{
       event.stopPropagation();
       toggleMenu(button);
@@ -564,7 +595,7 @@ def build_runtime_script(
     const enabledCount = [...state.plugins.values()].filter((plugin) => plugin.enabled).length;
     menu.innerHTML = `
       <div class="amazify-menu-head">
-        <div class="amazify-menu-title"><span class="amazify-mark">A</span><span>Amazify</span></div>
+        <div class="amazify-menu-title">${{logoMarkup("amazify-logo amazify-logo-menu")}}<span>Amazify</span></div>
         <div class="amazify-menu-status">${{esc(enabledCount)}} active</div>
       </div>
       <div class="amazify-menu-body">
@@ -630,7 +661,7 @@ def build_runtime_script(
     panel.innerHTML = `
       <div class="amazify-panel-header">
         <div class="amazify-panel-title">
-          <span class="amazify-mark">A</span>
+          ${{logoMarkup("amazify-logo amazify-logo-panel")}}
           <span><strong>Amazify</strong><small>Runtime customization for Amazon Music</small></span>
         </div>
         <button class="amazify-close" type="button" aria-label="Close Amazify">&times;</button>

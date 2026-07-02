@@ -27,6 +27,10 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("plugins.install", script)
         self.assertIn("data-amazify-install-plugin", script)
         self.assertIn("plugins.disableAll", script)
+        self.assertIn("LOGO_DATA_URI", script)
+        self.assertIn("data:image/png;base64,", script)
+        self.assertIn("amazify-logo", script)
+        self.assertNotIn('class="amazify-mark">A', script)
 
     def test_cleanup_script_removes_injected_markers(self) -> None:
         script = build_cleanup_script()

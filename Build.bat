@@ -8,6 +8,7 @@ set "DIST=%ROOT%\dist"
 set "BUILD=%ROOT%\build"
 set "SPEC=%BUILD%\spec"
 set "ICON=%ROOT%\packaging\assets\logo.ico"
+set "RUNTIME_LOGO=%ROOT%\amazify\assets\logo.png"
 set "AMAZIFY_ENTRY=%ROOT%\packaging\amazify_cli.py"
 set "INSTALLER_ENTRY=%ROOT%\packaging\amazify_installer.py"
 
@@ -30,8 +31,13 @@ if not exist "%ICON%" (
     popd
     exit /b 1
 )
+if not exist "%RUNTIME_LOGO%" (
+    echo Expected runtime logo missing: %RUNTIME_LOGO%
+    popd
+    exit /b 1
+)
 
-call :run "%PYTHON%" -m PyInstaller --noconfirm --clean --onefile --console --icon "%ICON%" --name amazify --distpath "%DIST%" --workpath "%BUILD%\amazify" --specpath "%SPEC%" "%AMAZIFY_ENTRY%"
+call :run "%PYTHON%" -m PyInstaller --noconfirm --clean --onefile --console --icon "%ICON%" --add-data "%RUNTIME_LOGO%;amazify\assets" --name amazify --distpath "%DIST%" --workpath "%BUILD%\amazify" --specpath "%SPEC%" "%AMAZIFY_ENTRY%"
 if errorlevel 1 goto :fail
 
 set "AMAZIFY_EXE=%DIST%\amazify.exe"
