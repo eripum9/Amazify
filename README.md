@@ -30,7 +30,15 @@ Implemented:
 - Python 3.10+
 - Amazon Music desktop app
 
-Install Python dependencies:
+Install Amazify as a user CLI command:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+The installer runs `pip install --user --editable .` and adds the Python user `Scripts` directory to your user PATH when needed. Open a new terminal after installation if the `amazify` command is not visible in the current one.
+
+For dependency-only development setup:
 
 ```powershell
 python -m pip install -r requirements.txt
@@ -41,25 +49,25 @@ python -m pip install -r requirements.txt
 Launch or connect to Amazon Music and inject Amazify:
 
 ```powershell
-python -m amazify
+amazify
 ```
 
 The explicit subcommand works too:
 
 ```powershell
-python -m amazify run
+amazify run
 ```
 
 Connect to an already running Amazon Music DevTools session:
 
 ```powershell
-python -m amazify run --connect-only --devtools-port <port>
+amazify run --connect-only --devtools-port <port>
 ```
 
 List detected Amazon Music launch candidates:
 
 ```powershell
-python -m amazify list-candidates
+amazify list-candidates
 ```
 
 Run tests:
@@ -138,13 +146,11 @@ Amazify treats plugins as code:
 
 ```text
 amazify/          Python companion, launcher, bridge, runtime injection
+install.ps1       Windows user installer for the amazify CLI command
 plugin_catalog.json
                   GitHub-backed marketplace catalog
 sample_plugins/  Stock and example plugin source for the catalog
 tests/           Unit tests for launcher, runtime, and plugin manager
-PROMPT.md        Product and prototype planning notes
-DEVTOOLS_METHODS.md
-                  DevTools and Amazon Music runtime research notes
 ```
 
 ## Development Notes
