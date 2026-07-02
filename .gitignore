@@ -20,6 +20,8 @@ build/
 .vscode/
 .idea/
 
+IDEAS.md
+
 debug.log
 *.log
 aws_sdk_*.log
