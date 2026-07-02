@@ -1,8 +1,14 @@
 # Amazify
 
-Amazify is a Windows prototype for customizing the Amazon Music desktop app at runtime. It is inspired by Spicetify, but it targets Amazon Music through a local Python companion, Chromium DevTools injection, and a small in-app plugin marketplace.
+<img src="packaging/assets/logo.png" alt="Amazify logo" width="96">
+
+Amazify is a Windows prototype for customizing the Amazon Music desktop app at runtime. It is inspired by and credits [Spicetify](https://spicetify.app/) for the core idea of user-controlled music app customization, but it targets Amazon Music through a local Python companion, Chromium DevTools injection, and a small in-app plugin marketplace.
 
 The project does not patch Amazon Music files on disk. Amazify launches or connects to Amazon Music, injects a reversible runtime, and loads local open-source plugins from the user plugin folder.
+
+## Credits
+
+- [Spicetify](https://spicetify.app/) and its open-source ecosystem for proving how powerful a music-app customization marketplace can be.
 
 ## Current Status
 
@@ -160,6 +166,7 @@ build_windows_installer.py
 .github/workflows/
                   Windows installer artifact build
 packaging/        PyInstaller entrypoints for the CLI and installer
+packaging/assets/ Amazify logo PNG and Windows ICO used for the executables
 plugin_catalog.json
                   GitHub-backed marketplace catalog
 sample_plugins/  Stock plugin source for the catalog

@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"
 BUILD = ROOT / "build"
 SPEC = BUILD / "spec"
+ICON = ROOT / "packaging" / "assets" / "logo.ico"
 PYINSTALLER = [sys.executable, "-m", "PyInstaller"]
 
 
@@ -30,6 +31,8 @@ def main() -> int:
     SPEC.mkdir(parents=True, exist_ok=True)
     remove_file(DIST / "amazify.exe")
     remove_file(DIST / "AmazifySetup.exe")
+    if not ICON.exists():
+        raise SystemExit(f"Expected icon missing: {ICON}")
 
     run(
         [
@@ -38,6 +41,8 @@ def main() -> int:
             "--clean",
             "--onefile",
             "--console",
+            "--icon",
+            str(ICON),
             "--name",
             "amazify",
             "--distpath",
@@ -61,6 +66,8 @@ def main() -> int:
             "--clean",
             "--onefile",
             "--console",
+            "--icon",
+            str(ICON),
             "--name",
             "AmazifySetup",
             "--add-binary",

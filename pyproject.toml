@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "amazify"
 version = "0.1.0"
-description = "Prototype Amazon Music desktop runtime customization companion."
+description = "Prototype Amazon Music runtime customization companion inspired by Spicetify."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -14,6 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 build = [
+  "Pillow>=10.0",
   "pyinstaller>=6.0",
 ]
 
