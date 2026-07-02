@@ -66,12 +66,12 @@
       ]
     },
     {
-      "id": "example.button.focus-mode",
-      "channel": "normal",
-      "sourceUrl": "https://github.com/eripum9/Amazify/tree/main/sample_plugins/example.button.focus-mode",
+      "id": "amazify.button.focus-mode",
+      "channel": "stock",
+      "sourceUrl": "https://github.com/eripum9/Amazify/tree/main/sample_plugins/amazify.button.focus-mode",
       "manifest": {
-        "id": "example.button.focus-mode",
-        "name": "Focus Mode Button",
+        "id": "amazify.button.focus-mode",
+        "name": "Focus Mode",
         "version": "0.1.0",
         "author": "Amazify",
         "type": "ui",
@@ -87,29 +87,29 @@
       "files": [
         {
           "path": "manifest.json",
-          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/example.button.focus-mode/manifest.json"
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.button.focus-mode/manifest.json"
         },
         {
           "path": "plugin.js",
-          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/example.button.focus-mode/plugin.js"
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.button.focus-mode/plugin.js"
         },
         {
           "path": "style.css",
-          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/example.button.focus-mode/style.css"
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.button.focus-mode/style.css"
         }
       ]
     },
     {
-      "id": "example.theme.dark-green",
-      "channel": "normal",
-      "sourceUrl": "https://github.com/eripum9/Amazify/tree/main/sample_plugins/example.theme.dark-green",
+      "id": "amazify.theme.dark-green",
+      "channel": "stock",
+      "sourceUrl": "https://github.com/eripum9/Amazify/tree/main/sample_plugins/amazify.theme.dark-green",
       "manifest": {
-        "id": "example.theme.dark-green",
+        "id": "amazify.theme.dark-green",
         "name": "Dark Green Theme",
         "version": "0.1.0",
         "author": "Amazify",
         "type": "theme",
-        "description": "A green-accent Amazon Music theme experiment.",
+        "description": "Adds a restrained green accent layer while keeping Amazon Music's dark interface intact.",
         "entry": "plugin.js",
         "styles": ["theme.css"],
         "permissions": ["dom-style"],
@@ -121,15 +121,15 @@
       "files": [
         {
           "path": "manifest.json",
-          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/example.theme.dark-green/manifest.json"
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.theme.dark-green/manifest.json"
         },
         {
           "path": "plugin.js",
-          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/example.theme.dark-green/plugin.js"
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.theme.dark-green/plugin.js"
         },
         {
           "path": "theme.css",
-          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/example.theme.dark-green/theme.css"
+          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.theme.dark-green/theme.css"
         }
       ]
     }

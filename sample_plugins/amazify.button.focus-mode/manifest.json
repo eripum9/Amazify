@@ -1,6 +1,6 @@
 {
-  "id": "example.button.focus-mode",
-  "name": "Focus Mode Button",
+  "id": "amazify.button.focus-mode",
+  "name": "Focus Mode",
   "version": "0.1.0",
   "author": "Amazify",
   "type": "ui",

@@ -29,8 +29,8 @@ class PluginManagerTests(unittest.TestCase):
                 {
                     "amazify.resume-last-song",
                     "amazify.true-big-mode",
-                    "example.button.focus-mode",
-                    "example.theme.dark-green",
+                    "amazify.button.focus-mode",
+                    "amazify.theme.dark-green",
                 },
             )
             self.assertFalse(any(plugin["installed"] for plugin in catalog))
