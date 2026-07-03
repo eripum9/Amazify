@@ -51,6 +51,7 @@ class PluginManagerTests(unittest.TestCase):
                 "description": "Demo catalog plugin.",
                 "entry": "plugin.js",
                 "styles": ["style.css"],
+                "assets": {"logo": "assets/logo.svg"},
                 "permissions": ["dom-read", "dom-write"],
                 "amazonMusic": {"target": "desktop"},
             }
@@ -60,8 +61,12 @@ class PluginManagerTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (remote / "style.css").write_text(
-                ".demo-plugin { color: #25d366; }",
+                ".demo-plugin { background-image: url('assets/logo.svg'); color: #25d366; }",
                 encoding="utf-8",
+            )
+            (remote / "assets").mkdir()
+            (remote / "assets" / "logo.svg").write_bytes(
+                b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>'
             )
             catalog = root / "catalog.json"
             catalog.write_text(
@@ -87,6 +92,10 @@ class PluginManagerTests(unittest.TestCase):
                                         "path": "style.css",
                                         "url": (remote / "style.css").resolve().as_uri(),
                                     },
+                                    {
+                                        "path": "assets/logo.svg",
+                                        "url": (remote / "assets" / "logo.svg").resolve().as_uri(),
+                                    },
                                 ],
                             }
                         ],
@@ -107,6 +116,7 @@ class PluginManagerTests(unittest.TestCase):
             self.assertTrue((root / "plugins" / "demo.plugin" / "manifest.json").exists())
             self.assertTrue((root / "plugins" / "demo.plugin" / "plugin.js").exists())
             self.assertTrue((root / "plugins" / "demo.plugin" / "style.css").exists())
+            self.assertTrue((root / "plugins" / "demo.plugin" / "assets" / "logo.svg").exists())
 
             plugins = manager.list_plugins()
             self.assertEqual([plugin.manifest.id for plugin in plugins], ["demo.plugin"])
@@ -147,6 +157,10 @@ class PluginManagerTests(unittest.TestCase):
                                         "path": "style.css",
                                         "url": (remote / "style.css").resolve().as_uri(),
                                     },
+                                    {
+                                        "path": "assets/logo.svg",
+                                        "url": (remote / "assets" / "logo.svg").resolve().as_uri(),
+                                    },
                                 ],
                             }
                         ],
@@ -166,6 +180,14 @@ class PluginManagerTests(unittest.TestCase):
             self.assertIn(
                 "style.css",
                 {style["path"] for style in snapshot[0]["source"]["styles"]},
+            )
+            self.assertEqual(snapshot[0]["source"]["assets"][0]["name"], "logo")
+            self.assertEqual(snapshot[0]["source"]["assets"][0]["path"], "assets/logo.svg")
+            self.assertEqual(snapshot[0]["source"]["assets"][0]["mimeType"], "image/svg+xml")
+            self.assertTrue(
+                snapshot[0]["source"]["assets"][0]["dataUri"].startswith(
+                    "data:image/svg+xml;base64,"
+                )
             )
 
             manager.disable_all()
@@ -187,6 +209,7 @@ class PluginManagerTests(unittest.TestCase):
   "description": "Bad path",
   "entry": "../outside.js",
   "styles": [],
+  "assets": {"bad": "../outside.svg"},
   "permissions": [],
   "amazonMusic": {"target": "desktop"}
 }

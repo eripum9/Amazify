@@ -135,6 +135,10 @@ Each plugin is a folder with a `manifest.json` and optional JavaScript/CSS sourc
   "description": "Short user-facing description.",
   "entry": "plugin.js",
   "styles": ["style.css"],
+  "assets": {
+    "logo": "assets/logo.svg",
+    "displayFont": "assets/display.woff2"
+  },
   "permissions": ["dom-read", "dom-write"],
   "amazonMusic": {
     "testedAppVersions": [],
@@ -144,6 +148,8 @@ Each plugin is a folder with a `manifest.json` and optional JavaScript/CSS sourc
 ```
 
 Plugin JavaScript is executed with `Amazify`, `manifest`, and `source` arguments. If it returns a function, Amazify calls that function during plugin cleanup.
+
+Assets can be any plugin-local file such as PNG, SVG, WEBP, WOFF2, or JSON. Declare them in `assets` as a list of paths or a name-to-path map. Runtime CSS automatically rewrites matching local `url(...)` references to safe data URIs. JavaScript can use `Amazify.assets.url(manifest.id, "logo")`, `Amazify.assets.get(manifest.id, "logo")`, or `source.assetUrl("logo")`.
 
 All plugin DOM should be removable and scoped with `data-amazify-plugin-id` when creating persistent nodes. Plugin CSS is mounted and removed automatically by plugin id.
 

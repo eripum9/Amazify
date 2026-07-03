@@ -965,17 +965,110 @@ def build_runtime_script(
     }}
   }}
 
+  function normalizeAssetPath(input, basePath = "") {{
+    let raw = String(input || "").trim().replace(/\\\\/g, "/");
+    if (!raw || raw.startsWith("#") || raw.startsWith("//") || /^[a-z][a-z0-9+.-]*:/i.test(raw)) {{
+      return "";
+    }}
+    try {{
+      raw = decodeURIComponent(raw);
+    }} catch (_error) {{
+      // Keep the original value if it is not URL-encoded.
+    }}
+    const suffixStart = raw.search(/[?#]/);
+    if (suffixStart >= 0) {{
+      raw = raw.slice(0, suffixStart);
+    }}
+    const baseParts = basePath ? String(basePath).replace(/\\\\/g, "/").split("/").slice(0, -1) : [];
+    const parts = [...baseParts, ...raw.split("/")];
+    const normalized = [];
+    for (const part of parts) {{
+      if (!part || part === ".") continue;
+      if (part === "..") {{
+        if (!normalized.length) return "";
+        normalized.pop();
+        continue;
+      }}
+      normalized.push(part);
+    }}
+    return normalized.join("/");
+  }}
+
+  function publicAsset(asset) {{
+    if (!asset) return null;
+    return {{
+      name: String(asset.name || ""),
+      path: String(asset.path || ""),
+      mimeType: String(asset.mimeType || "application/octet-stream"),
+      size: Number(asset.size || 0),
+      dataUri: String(asset.dataUri || "")
+    }};
+  }}
+
+  function buildPluginAssetIndex(plugin) {{
+    const index = new Map();
+    const assets = plugin && plugin.source && Array.isArray(plugin.source.assets) ? plugin.source.assets : [];
+    for (const asset of assets) {{
+      const normalized = publicAsset(asset);
+      if (!normalized || !normalized.dataUri) continue;
+      const keys = [
+        normalized.name,
+        normalized.path,
+        normalizeAssetPath(normalized.name),
+        normalizeAssetPath(normalized.path)
+      ].filter(Boolean);
+      for (const key of keys) {{
+        index.set(key, normalized);
+      }}
+    }}
+    return index;
+  }}
+
+  function findAssetInIndex(assetIndex, reference, basePath = "") {{
+    if (!assetIndex || !reference) return null;
+    return (
+      assetIndex.get(String(reference)) ||
+      assetIndex.get(normalizeAssetPath(reference)) ||
+      assetIndex.get(normalizeAssetPath(reference, basePath)) ||
+      null
+    );
+  }}
+
+  function pluginAsset(pluginId, nameOrPath) {{
+    const plugin = state.plugins.get(pluginId);
+    if (!plugin) return null;
+    return findAssetInIndex(buildPluginAssetIndex(plugin), nameOrPath);
+  }}
+
+  function listPluginAssets(pluginId) {{
+    const plugin = state.plugins.get(pluginId);
+    const assets = plugin && plugin.source && Array.isArray(plugin.source.assets) ? plugin.source.assets : [];
+    return assets.map(publicAsset).filter(Boolean);
+  }}
+
+  function rewriteCssAssetUrls(css, stylePath, assetIndex) {{
+    return String(css || "").replace(/url\\(\\s*(['"]?)([^'")]+)\\1\\s*\\)/g, (_match, _quote, rawReference) => {{
+      const reference = String(rawReference || "").trim();
+      const asset = findAssetInIndex(assetIndex, reference, stylePath);
+      if (!asset) {{
+        return _match;
+      }}
+      return 'url("' + String(asset.dataUri || "").replace(/"/g, '\\"') + '")';
+    }});
+  }}
+
   function mountPlugin(plugin) {{
     const manifest = plugin.manifest;
     const pluginId = manifest.id;
     unmountPlugin(pluginId);
 
+    const assetIndex = buildPluginAssetIndex(plugin);
     const styles = plugin.source && plugin.source.styles ? plugin.source.styles : [];
     for (const styleSource of styles) {{
       const style = document.createElement("style");
       style.dataset.amazifyStyleId = pluginId;
       style.dataset.amazifyPluginId = pluginId;
-      style.textContent = String(styleSource.content || "");
+      style.textContent = rewriteCssAssetUrls(styleSource.content, styleSource.path, assetIndex);
       document.head.appendChild(style);
     }}
 
@@ -983,7 +1076,15 @@ def build_runtime_script(
     const entry = plugin.source ? plugin.source.entry : "";
     if (entry) {{
       const runner = new Function("Amazify", "manifest", "source", `${{entry}}\\n//# sourceURL=amazify-plugin-${{pluginId}}.js`);
-      const result = runner(window.Amazify, manifest, plugin.source);
+      const pluginSource = Object.assign({{}}, plugin.source || {{}}, {{
+        assets: listPluginAssets(pluginId),
+        assetUrl: (nameOrPath) => {{
+          const asset = pluginAsset(pluginId, nameOrPath);
+          return asset ? asset.dataUri : "";
+        }},
+        asset: (nameOrPath) => pluginAsset(pluginId, nameOrPath)
+      }});
+      const result = runner(window.Amazify, manifest, pluginSource);
       if (typeof result === "function") {{
         cleanup = result;
       }}
@@ -1095,6 +1196,14 @@ def build_runtime_script(
         }});
         state.actionHost.appendChild(action);
         return action;
+      }}
+    }},
+    assets: {{
+      list: (pluginId) => listPluginAssets(pluginId),
+      get: (pluginId, nameOrPath) => pluginAsset(pluginId, nameOrPath),
+      url: (pluginId, nameOrPath) => {{
+        const asset = pluginAsset(pluginId, nameOrPath);
+        return asset ? asset.dataUri : "";
       }}
     }},
     bridge,

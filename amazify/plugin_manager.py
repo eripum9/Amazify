@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import json
+import mimetypes
 import os
 import re
 import shutil
@@ -17,6 +19,7 @@ DEFAULT_CATALOG_URL = (
 )
 CATALOG_CACHE_SECONDS = 60
 MAX_PLUGIN_FILE_BYTES = 2 * 1024 * 1024
+MAX_PLUGIN_ASSET_BYTES = 5 * 1024 * 1024
 PLUGIN_TYPES = {"theme", "ui"}
 PERMISSIONS = {
     "dom-style",
@@ -42,6 +45,7 @@ class PluginManifest:
     description: str
     entry: str | None
     styles: list[str]
+    assets: dict[str, str]
     permissions: list[str]
     amazon_music: dict[str, Any]
 
@@ -75,6 +79,8 @@ class PluginManifest:
         if entry is not None and not isinstance(entry, str):
             raise PluginError(f"Plugin {plugin_id} entry must be a string")
 
+        assets = _normalize_assets(plugin_id, data.get("assets", {}))
+
         amazon_music = data.get("amazonMusic", {})
         if not isinstance(amazon_music, dict):
             raise PluginError(f"Plugin {plugin_id} amazonMusic must be an object")
@@ -88,6 +94,7 @@ class PluginManifest:
             description=str(data.get("description", "")),
             entry=entry,
             styles=styles,
+            assets=assets,
             permissions=permissions,
             amazon_music=amazon_music,
         )
@@ -105,6 +112,7 @@ class PluginManifest:
             "description": self.description,
             "entry": self.entry,
             "styles": self.styles,
+            "assets": self.assets,
             "permissions": self.permissions,
             "amazonMusic": self.amazon_music,
         }
@@ -222,6 +230,14 @@ class PluginManager:
         files = catalog_item.get("files")
         if not isinstance(files, list) or not files:
             raise PluginError(f"Catalog plugin {plugin_id} has no downloadable files")
+        manifest_data = catalog_item.get("manifest")
+        asset_paths = set()
+        if isinstance(manifest_data, dict) and isinstance(manifest_data.get("assets"), dict):
+            asset_paths = {
+                path
+                for path in manifest_data["assets"].values()
+                if isinstance(path, str) and path
+            }
 
         tmp_root = self.plugin_dir / f".{plugin_id}.download"
         target = self.plugin_dir / plugin_id
@@ -246,7 +262,14 @@ class PluginManager:
 
                 destination = self._resolve_download_target(tmp_root, relative_path)
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                destination.write_text(self._read_text_url(url), encoding="utf-8")
+                max_bytes = (
+                    MAX_PLUGIN_ASSET_BYTES
+                    if relative_path in asset_paths
+                    else MAX_PLUGIN_FILE_BYTES
+                )
+                destination.write_bytes(
+                    self._read_url_bytes(url, max_bytes=max_bytes)
+                )
 
             manifest_path = tmp_root / "manifest.json"
             if not manifest_path.exists():
@@ -300,7 +323,11 @@ class PluginManager:
             raise PluginError(f"Manifest must be an object: {manifest_path}")
         manifest = PluginManifest.from_dict(data)
         root = manifest_path.parent
-        for relative in [*(manifest.styles or []), *( [manifest.entry] if manifest.entry else [] )]:
+        for relative in [
+            *(manifest.styles or []),
+            *([manifest.entry] if manifest.entry else []),
+            *manifest.assets.values(),
+        ]:
             self._resolve_plugin_file(root, relative)
         return manifest
 
@@ -334,7 +361,7 @@ class PluginManager:
         snapshot: list[dict[str, Any]] = []
         for package in self.list_plugins():
             manifest = package.manifest
-            source: dict[str, Any] = {"entry": "", "styles": []}
+            source: dict[str, Any] = {"entry": "", "styles": [], "assets": []}
             if manifest.entry:
                 source["entry"] = self._read_plugin_file(package.root, manifest.entry)
             for style_path in manifest.styles:
@@ -343,6 +370,10 @@ class PluginManager:
                         "path": style_path,
                         "content": self._read_plugin_file(package.root, style_path),
                     }
+                )
+            for name, asset_path in manifest.assets.items():
+                source["assets"].append(
+                    self._read_plugin_asset(package.root, name, asset_path)
                 )
             snapshot.append(
                 {
@@ -379,6 +410,9 @@ class PluginManager:
         if manifest.entry:
             manifest_paths.append(manifest.entry)
         manifest_paths.extend(manifest.styles)
+        manifest_paths.extend(manifest.assets.values())
+        for manifest_path in manifest_paths:
+            self._validate_relative_path(manifest_path)
         missing = sorted(set(manifest_paths) - {file_item["path"] for file_item in normalized_files})
         if missing:
             raise PluginError(f"Catalog plugin {manifest.id} missing files: {missing}")
@@ -425,15 +459,18 @@ class PluginManager:
         return data
 
     def _read_text_url(self, url: str) -> str:
+        return self._read_url_bytes(url, max_bytes=MAX_PLUGIN_FILE_BYTES).decode("utf-8")
+
+    def _read_url_bytes(self, url: str, *, max_bytes: int) -> bytes:
         request = Request(url, headers={"User-Agent": "Amazify/0.1"})
         try:
             with urlopen(request, timeout=15) as response:
-                raw = response.read(MAX_PLUGIN_FILE_BYTES + 1)
+                raw = response.read(max_bytes + 1)
         except (OSError, URLError) as exc:
-            raise PluginError(f"Unable to download plugin catalog file: {url}") from exc
-        if len(raw) > MAX_PLUGIN_FILE_BYTES:
+            raise PluginError(f"Unable to download plugin file: {url}") from exc
+        if len(raw) > max_bytes:
             raise PluginError(f"Downloaded plugin file is too large: {url}")
-        return raw.decode("utf-8")
+        return raw
 
     def _assert_plugin_child_path(self, path: Path) -> None:
         root_resolved = self.plugin_dir.resolve()
@@ -464,6 +501,21 @@ class PluginManager:
         path = self._resolve_plugin_file(root, relative_path)
         return path.read_text(encoding="utf-8")
 
+    def _read_plugin_asset(self, root: Path, name: str, relative_path: str) -> dict[str, Any]:
+        path = self._resolve_plugin_file(root, relative_path)
+        data = path.read_bytes()
+        if len(data) > MAX_PLUGIN_ASSET_BYTES:
+            raise PluginError(f"Plugin asset is too large: {relative_path}")
+        mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        encoded = base64.b64encode(data).decode("ascii")
+        return {
+            "name": name,
+            "path": relative_path,
+            "mimeType": mime_type,
+            "size": len(data),
+            "dataUri": f"data:{mime_type};base64,{encoded}",
+        }
+
     def _resolve_plugin_file(self, root: Path, relative_path: str) -> Path:
         if not relative_path or Path(relative_path).is_absolute():
             raise PluginError(f"Invalid plugin path: {relative_path}")
@@ -483,6 +535,25 @@ def _required_str(data: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise PluginError(f"Manifest field {key} must be a non-empty string")
     return value.strip()
+
+
+def _normalize_assets(plugin_id: str, value: object) -> dict[str, str]:
+    if value in (None, {}):
+        return {}
+    if isinstance(value, list):
+        if not all(isinstance(item, str) for item in value):
+            raise PluginError(f"Plugin {plugin_id} assets must be strings or a string map")
+        return {item: item for item in value}
+    if isinstance(value, dict):
+        assets: dict[str, str] = {}
+        for name, path in value.items():
+            if not isinstance(name, str) or not name.strip():
+                raise PluginError(f"Plugin {plugin_id} asset names must be non-empty strings")
+            if not isinstance(path, str) or not path.strip():
+                raise PluginError(f"Plugin {plugin_id} asset paths must be non-empty strings")
+            assets[name.strip()] = path.strip()
+        return assets
+    raise PluginError(f"Plugin {plugin_id} assets must be a string list or string map")
 
 
 def _now() -> float:
