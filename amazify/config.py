@@ -75,6 +75,14 @@ class RuntimeConfig:
         return self.state_dir / "devtools_state.json"
 
     @property
+    def daemon_state_file(self) -> Path:
+        return self.state_dir / "daemon_state.json"
+
+    @property
+    def daemon_stop_file(self) -> Path:
+        return self.state_dir / "daemon_stop"
+
+    @property
     def welcome_state_file(self) -> Path:
         return self.state_dir / "welcome_state.json"
 

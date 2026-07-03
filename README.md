@@ -28,6 +28,8 @@ Implemented:
 - Permissioned plugin metadata
 - One-click disable for all plugins
 - Localhost bridge with DevTools binding fallback
+- Background daemon with CLI start/stop/status commands
+- Inno Setup 6 GUI installer with terminal-free shortcuts
 - Stock sample plugins
 
 ## Requirements
@@ -36,21 +38,15 @@ Implemented:
 - Python 3.10+
 - Amazon Music desktop app
 
-The standalone Windows installer is experimental and not published as a ready user build yet. When it is ready, `AmazifySetup.exe` will copy a standalone `amazify.exe` into `%LOCALAPPDATA%\Programs\Amazify`, add that folder to the user PATH, register a user-level uninstall entry, and create a Start Menu shortcut named **Amazon Music (Amazify)** that launches `amazify run`.
+The standalone Windows installer is experimental and not published as a ready user build yet. When it is ready, the Inno Setup 6 GUI installer `AmazifySetup.exe` will copy `amazify.exe` and the windowless shortcut launcher `amazifyw.exe` into `%LOCALAPPDATA%\Programs\Amazify`, add that folder to the user PATH, register a user-level uninstall entry, and create a Start Menu shortcut named **Amazon Music (Amazify)**.
 
 ```powershell
 AmazifySetup.exe
 ```
 
-Optional shortcut flags:
+The installer finish page has interactive checkboxes for optional Desktop and taskbar shortcuts. Shortcuts use the Amazify icon and point at `amazifyw.exe run`, which starts or connects to the background daemon without opening a terminal window.
 
-```powershell
-AmazifySetup.exe --desktop-shortcut
-AmazifySetup.exe --taskbar-shortcut
-AmazifySetup.exe --shortcuts
-```
-
-The shortcuts use the Amazify executable icon. Taskbar pinning is best-effort because recent Windows builds can block programmatic pinning; if Windows refuses the pin action, pin **Amazon Music (Amazify)** manually from Start.
+Taskbar pinning is best-effort because recent Windows builds can block programmatic pinning; if Windows refuses the pin action, pin **Amazon Music (Amazify)** manually from Start.
 
 For now, use this only for local packaging tests.
 
@@ -60,14 +56,14 @@ For source development with Python:
 python -m pip install -e .
 ```
 
-Build the standalone CLI and installer locally:
+Build the standalone CLI, windowless launcher, and GUI installer locally:
 
 ```powershell
 python -m pip install -e ".[build]"
 .\Build.bat
 ```
 
-The build writes `dist\amazify.exe` and `dist\AmazifySetup.exe`.
+The build writes `dist\amazify.exe`, `dist\amazifyw.exe`, and `dist\AmazifySetup.exe`. Building the setup executable requires Inno Setup 6 (`ISCC.exe`) on PATH or installed in the default Inno Setup directory.
 
 ## Run
 
@@ -81,6 +77,20 @@ Launch or connect to Amazon Music and inject Amazify:
 
 ```powershell
 amazify run
+```
+
+`amazify run` starts the background daemon and returns. The daemon keeps running after the terminal closes. For foreground debugging:
+
+```powershell
+amazify run --foreground
+```
+
+Manage the daemon:
+
+```powershell
+amazify daemon start
+amazify daemon status
+amazify daemon stop
 ```
 
 Connect to an already running Amazon Music DevTools session:
@@ -182,7 +192,7 @@ Build.bat
                   Builds the standalone CLI and Windows installer on Windows
 .github/workflows/
                   Windows installer artifact build
-packaging/        PyInstaller entrypoints for the CLI and installer
+packaging/        PyInstaller entrypoint and Inno Setup installer script
 packaging/assets/ Amazify logo PNG and Windows ICO used for the executables
 plugin_catalog.json
                   GitHub-backed marketplace catalog

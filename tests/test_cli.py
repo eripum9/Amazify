@@ -9,9 +9,11 @@ from unittest import mock
 
 from amazify.cli import (
     connect_or_launch,
+    daemon_spawn_command,
     main,
     recent_devtools_ports,
     remember_devtools_port,
+    run,
     show_first_run_welcome,
 )
 from amazify.config import RuntimeConfig
@@ -51,6 +53,49 @@ class CliDevToolsPortTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         run_command.assert_called_once()
 
+    def test_run_starts_daemon_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            config = make_config(Path(temp))
+            args = mock.Mock(
+                devtools_port=None,
+                bridge_port=None,
+                manual_launcher=None,
+                foreground=False,
+                once=False,
+            )
+
+            with (
+                mock.patch("amazify.cli.RuntimeConfig.create", return_value=config),
+                mock.patch("amazify.cli.show_first_run_welcome") as welcome,
+                mock.patch("amazify.cli.start_daemon", return_value=0) as start_daemon,
+            ):
+                exit_code = run(args)
+
+            self.assertEqual(exit_code, 0)
+            welcome.assert_called_once_with(config)
+            start_daemon.assert_called_once_with(args, config=config)
+
+    def test_run_once_uses_foreground_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            config = make_config(Path(temp))
+            args = mock.Mock(
+                devtools_port=None,
+                bridge_port=None,
+                manual_launcher=None,
+                foreground=False,
+                once=True,
+            )
+
+            with (
+                mock.patch("amazify.cli.RuntimeConfig.create", return_value=config),
+                mock.patch("amazify.cli.show_first_run_welcome"),
+                mock.patch("amazify.cli.run_foreground", return_value=0) as run_foreground,
+            ):
+                exit_code = run(args)
+
+            self.assertEqual(exit_code, 0)
+            run_foreground.assert_called_once_with(args, config=config, daemon_mode=False)
+
     def test_remember_devtools_port_writes_reusable_state(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             config = make_config(Path(temp), devtools_port=61234)
@@ -76,6 +121,38 @@ class CliDevToolsPortTests(unittest.TestCase):
             self.assertIn("Amazon Music (Amazify)", first_output.getvalue())
             self.assertEqual(second_output.getvalue(), "")
             self.assertTrue(config.welcome_state_file.exists())
+
+    def test_daemon_spawn_command_uses_module_entry_for_source_runs(self) -> None:
+        args = mock.Mock(
+            devtools_port=61234,
+            bridge_port=None,
+            manual_launcher="AmazonMusic_app!App",
+            connect_only=True,
+            verbose=True,
+        )
+
+        with (
+            mock.patch("amazify.cli.sys.frozen", False, create=True),
+            mock.patch("amazify.cli.sys.executable", "python.exe"),
+        ):
+            command = daemon_spawn_command(args)
+
+        self.assertEqual(
+            command,
+            [
+                "python.exe",
+                "-m",
+                "amazify",
+                "--verbose",
+                "daemon",
+                "run",
+                "--devtools-port",
+                "61234",
+                "--manual-launcher",
+                "AmazonMusic_app!App",
+                "--connect-only",
+            ],
+        )
 
     def test_recent_devtools_ports_prefers_state_then_recent_log_entries(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

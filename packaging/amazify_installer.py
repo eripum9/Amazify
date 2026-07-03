@@ -14,6 +14,7 @@ from amazify.shortcuts import install_amazify_shortcuts, remove_amazify_shortcut
 APP_NAME = "Amazify"
 APP_VERSION = "0.1.0"
 EXE_NAME = "amazify.exe"
+WINDOWED_EXE_NAME = "amazifyw.exe"
 SETUP_NAME = "AmazifySetup.exe"
 UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Amazify"
 
@@ -132,14 +133,20 @@ def install(args: argparse.Namespace) -> int:
     target_dir.mkdir(parents=True, exist_ok=True)
 
     target_exe = target_dir / EXE_NAME
+    source_windowed_exe = bundled_file(WINDOWED_EXE_NAME)
+    target_windowed_exe = target_dir / WINDOWED_EXE_NAME
     setup_copy = target_dir / SETUP_NAME
     shutil.copy2(source_exe, target_exe)
+    shortcut_exe = target_exe
+    if source_windowed_exe.exists():
+        shutil.copy2(source_windowed_exe, target_windowed_exe)
+        shortcut_exe = target_windowed_exe
     shutil.copy2(Path(sys.executable), setup_copy)
 
     path_changed = add_to_user_path(target_dir)
     write_uninstall_entry(target_dir, setup_copy)
     shortcut_result = install_amazify_shortcuts(
-        target_exe,
+        shortcut_exe,
         start_menu=not args.no_start_menu_shortcut,
         desktop=args.desktop_shortcut or args.shortcuts,
         taskbar=args.taskbar_shortcut or args.shortcuts,

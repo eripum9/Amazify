@@ -102,7 +102,7 @@ $shortcut.TargetPath = $targetPath
 $shortcut.Arguments = 'run'
 $shortcut.WorkingDirectory = Split-Path -Parent $targetPath
 $shortcut.IconLocation = "$targetPath,0"
-$shortcut.Description = 'Launch Amazon Music through Amazify'
+$shortcut.Description = 'Start Amazify and launch Amazon Music'
 $shortcut.Save()
 """.strip()
     _run_powershell(script)

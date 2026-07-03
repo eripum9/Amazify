@@ -23,7 +23,7 @@ class ShortcutTests(unittest.TestCase):
             script = run_powershell.call_args.args[0]
             self.assertIn("$shortcut.Arguments = 'run'", script)
             self.assertIn("$shortcut.IconLocation = \"$targetPath,0\"", script)
-            self.assertIn("Amazon Music through Amazify", script)
+            self.assertIn("Start Amazify and launch Amazon Music", script)
 
     def test_install_shortcuts_creates_start_menu_and_desktop_without_taskbar(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

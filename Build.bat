@@ -10,7 +10,8 @@ set "SPEC=%BUILD%\spec"
 set "ICON=%ROOT%\packaging\assets\logo.ico"
 set "RUNTIME_LOGO=%ROOT%\amazify\assets\logo.png"
 set "AMAZIFY_ENTRY=%ROOT%\packaging\amazify_cli.py"
-set "INSTALLER_ENTRY=%ROOT%\packaging\amazify_installer.py"
+set "INNO_SCRIPT=%ROOT%\packaging\Amazify.iss"
+set "ISCC=ISCC.exe"
 
 if exist "%ROOT%\.venv\Scripts\python.exe" (
     set "PYTHON=%ROOT%\.venv\Scripts\python.exe"
@@ -24,6 +25,7 @@ if exist "%BUILD%" rmdir /s /q "%BUILD%"
 if not exist "%DIST%" mkdir "%DIST%"
 if not exist "%SPEC%" mkdir "%SPEC%"
 if exist "%DIST%\amazify.exe" del /f /q "%DIST%\amazify.exe"
+if exist "%DIST%\amazifyw.exe" del /f /q "%DIST%\amazifyw.exe"
 if exist "%DIST%\AmazifySetup.exe" del /f /q "%DIST%\AmazifySetup.exe"
 
 if not exist "%ICON%" (
@@ -46,7 +48,32 @@ if not exist "%AMAZIFY_EXE%" (
     goto :fail
 )
 
-call :run "%PYTHON%" -m PyInstaller --noconfirm --clean --onefile --console --icon "%ICON%" --name AmazifySetup --add-binary "%AMAZIFY_EXE%;." --distpath "%DIST%" --workpath "%BUILD%\installer" --specpath "%SPEC%" "%INSTALLER_ENTRY%"
+call :run "%PYTHON%" -m PyInstaller --noconfirm --clean --onefile --windowed --icon "%ICON%" --add-data "%RUNTIME_LOGO%;amazify\assets" --name amazifyw --distpath "%DIST%" --workpath "%BUILD%\amazifyw" --specpath "%SPEC%" "%AMAZIFY_ENTRY%"
+if errorlevel 1 goto :fail
+
+set "AMAZIFYW_EXE=%DIST%\amazifyw.exe"
+if not exist "%AMAZIFYW_EXE%" (
+    echo Expected build output missing: %AMAZIFYW_EXE%
+    goto :fail
+)
+
+where "%ISCC%" >nul 2>nul
+if errorlevel 1 (
+    if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" (
+        set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+    ) else if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" (
+        set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+    ) else (
+        echo Inno Setup 6 compiler not found. Install Inno Setup 6 or add ISCC.exe to PATH.
+        echo Built:
+        echo - %AMAZIFY_EXE%
+        echo - %AMAZIFYW_EXE%
+        popd
+        exit /b 1
+    )
+)
+
+call :run "%ISCC%" "%INNO_SCRIPT%"
 if errorlevel 1 goto :fail
 
 set "SETUP_EXE=%DIST%\AmazifySetup.exe"
@@ -58,6 +85,7 @@ if not exist "%SETUP_EXE%" (
 echo(
 echo Built:
 echo - %AMAZIFY_EXE%
+echo - %AMAZIFYW_EXE%
 echo - %SETUP_EXE%
 popd
 exit /b 0
