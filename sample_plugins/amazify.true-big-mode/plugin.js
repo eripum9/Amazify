@@ -834,6 +834,10 @@ function ensureOverlay(art) {
 }
 
 function controlButtonMarkup(action, label, paths) {
+  const repeatBadge =
+    action === "repeat"
+      ? '<span class="amazify-true-big-mode-repeat-one-badge" aria-hidden="true">1</span>'
+      : "";
   return `
     <button
       class="amazify-true-big-mode-hover-control"
@@ -843,6 +847,7 @@ function controlButtonMarkup(action, label, paths) {
       title="${escapeAttribute(label)}"
     >
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths}</svg>
+      ${repeatBadge}
     </button>
   `;
 }
@@ -931,25 +936,159 @@ function looksActiveControl(control) {
   if (!control) {
     return false;
   }
-  const ariaPressed = String(control.getAttribute("aria-pressed") || "").toLowerCase();
-  const ariaChecked = String(control.getAttribute("aria-checked") || "").toLowerCase();
-  if (ariaPressed === "true" || ariaChecked === "true") {
+  if (readsAsPressed(control)) {
     return true;
   }
-  const text = [
-    control.getAttribute("aria-label"),
-    control.getAttribute("title"),
-    control.getAttribute("data-original-title"),
-    control.className,
-  ]
-    .map((value) => String(value || "").toLowerCase())
-    .join(" ");
+  const text = controlStateText(control);
   return (
     text.includes("selected") ||
     text.includes("active") ||
     text.includes("disable") ||
     text.includes("turn off")
   );
+}
+
+function readsAsPressed(control) {
+  if (!control) {
+    return false;
+  }
+  const ariaPressed = String(control.getAttribute("aria-pressed") || "").toLowerCase();
+  const ariaChecked = String(control.getAttribute("aria-checked") || "").toLowerCase();
+  const ariaSelected = String(control.getAttribute("aria-selected") || "").toLowerCase();
+  return ariaPressed === "true" || ariaChecked === "true" || ariaSelected === "true";
+}
+
+function valueText(value) {
+  if (!value) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "object" && "baseVal" in value) {
+    return String(value.baseVal || "");
+  }
+  return String(value);
+}
+
+function elementStateText(element) {
+  if (!element) {
+    return "";
+  }
+  return [
+    element.getAttribute("aria-label"),
+    element.getAttribute("title"),
+    element.getAttribute("data-original-title"),
+    element.getAttribute("data-qaid"),
+    element.getAttribute("data-testid"),
+    element.getAttribute("aria-pressed"),
+    element.getAttribute("aria-checked"),
+    element.getAttribute("aria-selected"),
+    element.getAttribute("aria-current"),
+    element.getAttribute("class"),
+    valueText(element.className),
+    element.textContent,
+  ]
+    .map((value) => String(value || "").toLowerCase())
+    .join(" ");
+}
+
+function controlStateText(control) {
+  if (!control) {
+    return "";
+  }
+  const parts = [elementStateText(control)];
+  control
+    .querySelectorAll("[aria-label], [title], [data-original-title], [aria-pressed], [aria-checked], [aria-selected], [aria-current], [class], svg use")
+    .forEach((element) => {
+      parts.push(elementStateText(element));
+      if (typeof SVGUseElement !== "undefined" && element instanceof SVGUseElement) {
+        parts.push(String(element.getAttribute("href") || element.getAttribute("xlink:href") || "").toLowerCase());
+      }
+    });
+  return parts.join(" ");
+}
+
+function isExplicitControlOff(text, keyword) {
+  return (
+    text.includes(`${keyword} off`) ||
+    text.includes(`${keyword} is off`) ||
+    text.includes(`${keyword}: off`) ||
+    text.includes(`${keyword} disabled`) ||
+    text.includes(`enable ${keyword}`) ||
+    text.includes(`turn ${keyword} on`) ||
+    text.includes(`turn on ${keyword}`)
+  );
+}
+
+function shuffleState(control) {
+  if (!control) {
+    return "unavailable";
+  }
+  const text = controlStateText(control);
+  if (isExplicitControlOff(text, "shuffle")) {
+    return "off";
+  }
+  if (
+    readsAsPressed(control) ||
+    text.includes("shuffle on") ||
+    text.includes("shuffle is on") ||
+    text.includes("shuffle: on") ||
+    text.includes("shuffle enabled") ||
+    text.includes("disable shuffle") ||
+    text.includes("turn shuffle off") ||
+    text.includes("turn off shuffle") ||
+    text.includes("shuffle active")
+  ) {
+    return "on";
+  }
+  return looksActiveControl(control) ? "on" : "off";
+}
+
+function repeatState(control) {
+  if (!control) {
+    return "unavailable";
+  }
+  const text = controlStateText(control);
+  const repeatOneText =
+    text.includes("repeat one") ||
+    text.includes("repeat 1") ||
+    text.includes("repeat1") ||
+    text.includes("repeat-one") ||
+    text.includes("repeat_one") ||
+    text.includes("repeat this song") ||
+    text.includes("repeat current song") ||
+    text.includes("repeat current track") ||
+    text.includes("repeat single") ||
+    text.includes("repeat_single");
+  const repeatOneIsNextAction =
+    text.includes("turn repeat one on") ||
+    text.includes("turn on repeat one") ||
+    text.includes("enable repeat one");
+  if (
+    repeatOneText &&
+    (!repeatOneIsNextAction || readsAsPressed(control) || text.includes("active") || text.includes("selected"))
+  ) {
+    return "one";
+  }
+  if (isExplicitControlOff(text, "repeat")) {
+    return "off";
+  }
+  if (
+    readsAsPressed(control) ||
+    text.includes("repeat all") ||
+    text.includes("repeat on") ||
+    text.includes("repeat is on") ||
+    text.includes("repeat: on") ||
+    text.includes("repeat enabled") ||
+    text.includes("disable repeat") ||
+    text.includes("turn repeat off") ||
+    text.includes("turn off repeat") ||
+    text.includes("repeat active")
+  ) {
+    return "all";
+  }
+  return looksActiveControl(control) ? "all" : "off";
 }
 
 function isPauseState(control) {
@@ -982,7 +1121,30 @@ function syncHoverControls() {
     const action = button.getAttribute("data-amazify-control");
     const source = findTransportControl(action);
     button.disabled = !source;
-    button.classList.toggle("amazify-true-big-mode-control-active", looksActiveControl(source));
+    let isActive = looksActiveControl(source);
+    if (action === "shuffle") {
+      const state = shuffleState(source);
+      isActive = state === "on";
+      button.dataset.shuffleState = state;
+      button.setAttribute("aria-pressed", isActive ? "true" : "false");
+      button.setAttribute("title", isActive ? "Shuffle on" : "Shuffle off");
+      button.setAttribute("aria-label", isActive ? "Shuffle on" : "Shuffle off");
+    } else {
+      delete button.dataset.shuffleState;
+      button.removeAttribute("aria-pressed");
+    }
+    if (action === "repeat") {
+      const state = repeatState(source);
+      isActive = state === "all" || state === "one";
+      button.dataset.repeatMode = state;
+      button.setAttribute("aria-pressed", isActive ? "true" : "false");
+      const label = state === "one" ? "Repeat one" : state === "all" ? "Repeat all" : "Repeat off";
+      button.setAttribute("title", label);
+      button.setAttribute("aria-label", label);
+    } else {
+      delete button.dataset.repeatMode;
+    }
+    button.classList.toggle("amazify-true-big-mode-control-active", isActive);
     if (action === "playpause") {
       button.dataset.playbackState = isPauseState(source) ? "pause" : "play";
     }
