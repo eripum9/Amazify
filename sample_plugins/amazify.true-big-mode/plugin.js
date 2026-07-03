@@ -15,6 +15,7 @@ const LYRIC_ACTIVE_CLASS = "amazify-true-big-mode-lyric-active";
 const LETTER_CLASS = "amazify-true-big-mode-letter";
 const WORD_CLASS = "amazify-true-big-mode-word";
 const WORD_ACTIVE_CLASS = "amazify-true-big-mode-word-active";
+const LYRICS_SCROLLING_CLASS = "amazify-true-big-mode-lyrics-scrolling";
 const SPICY_LYRICS_API_URL = "https://api.spicylyrics.org";
 const SPICY_LYRICS_VERSION = "1.1";
 const SPOTIFY_TOKEN_STORAGE_KEY = "amazify.true-big-mode.spotifyAccessToken";
@@ -41,6 +42,7 @@ let lastTimedLyricLine = null;
 let syncTimer = null;
 let syncFrame = null;
 let intervalId = null;
+let lyricScrollBindings = new Map();
 let fullscreenArmedUntil = 0;
 let fullscreenAttempted = false;
 let fullscreenEnteredByPlugin = false;
@@ -818,6 +820,11 @@ function ensureOverlay(art) {
   overlay.setAttribute("aria-hidden", "true");
   overlay.setAttribute("data-amazify-plugin-id", manifest.id);
   overlay.innerHTML = `
+    <div class="amazify-true-big-mode-exit-affordance">
+      <svg class="amazify-true-big-mode-exit-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M6.7 5.3 12 10.6l5.3-5.3L18.7 6.7 13.4 12l5.3 5.3-1.4 1.4L12 13.4l-5.3 5.3-1.4-1.4 5.3-5.3-5.3-5.3 1.4-1.4Z"></path>
+      </svg>
+    </div>
     <div class="amazify-true-big-mode-hover-controls">
       ${controlButtonMarkup("shuffle", "Shuffle", '<path d="M16.8 3.7h3.7v3.7h-1.8V6.6l-3.1 3.1-1.3-1.3 3.1-3.1h-.6V3.7ZM4 7.1h3.1c1.3 0 2.5.5 3.4 1.4l.8.8-1.3 1.3-.8-.8c-.6-.6-1.3-.9-2.1-.9H4V7.1Zm12.8 9.5h.6l-3.1-3.1 1.3-1.3 3.1 3.1v-.8h1.8v3.7h-3.7v-1.6ZM4 15.1h3.1c.8 0 1.6-.3 2.1-.9l7.2-7.2 1.3 1.3-7.2 7.2c-.9.9-2.1 1.4-3.4 1.4H4v-1.8Z"></path>')}
       ${controlButtonMarkup("previous", "Previous", '<path d="M6 5h2v14H6V5Zm3 7 10 7V5L9 12Z"></path>')}
@@ -1009,6 +1016,42 @@ function controlStateText(control) {
   return parts.join(" ");
 }
 
+function parseRgbColor(value) {
+  const parts = String(value || "").match(/\d+(\.\d+)?/g);
+  if (!parts || parts.length < 3) {
+    return null;
+  }
+  return parts.slice(0, 3).map(Number);
+}
+
+function colorLooksActive(value) {
+  const rgb = parseRgbColor(value);
+  if (!rgb) {
+    return false;
+  }
+  const [r, g, b] = rgb;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max < 120 || max - min < 44) {
+    return false;
+  }
+  return (g > r + 28 && g > 130) || (b > r + 28 && b > 130);
+}
+
+function computedControlLooksActive(control) {
+  if (!control) {
+    return false;
+  }
+  const elements = [
+    control,
+    ...Array.from(control.querySelectorAll("svg, path, use, [class*='icon'], [class*='Icon']")),
+  ];
+  return elements.some((element) => {
+    const style = window.getComputedStyle(element);
+    return colorLooksActive(style.color) || colorLooksActive(style.fill) || colorLooksActive(style.stroke);
+  });
+}
+
 function isExplicitControlOff(text, keyword) {
   return (
     text.includes(`${keyword} off`) ||
@@ -1038,7 +1081,8 @@ function shuffleState(control) {
     text.includes("disable shuffle") ||
     text.includes("turn shuffle off") ||
     text.includes("turn off shuffle") ||
-    text.includes("shuffle active")
+    text.includes("shuffle active") ||
+    computedControlLooksActive(control)
   ) {
     return "on";
   }
@@ -1084,7 +1128,8 @@ function repeatState(control) {
     text.includes("disable repeat") ||
     text.includes("turn repeat off") ||
     text.includes("turn off repeat") ||
-    text.includes("repeat active")
+    text.includes("repeat active") ||
+    computedControlLooksActive(control)
   ) {
     return "all";
   }
@@ -1425,6 +1470,77 @@ function restoreLyricEnhancements() {
   lastActiveLyric = null;
 }
 
+function isLikelyLyricScroller(element) {
+  if (!(element instanceof HTMLElement) || isInsideTrackChrome(element)) {
+    return false;
+  }
+  const className = String(element.className || "").toLowerCase();
+  if (
+    !className.includes("lyricscontainer") &&
+    !className.includes("lyricswrapper") &&
+    !className.includes("lyricsscroller")
+  ) {
+    return false;
+  }
+  return element.scrollHeight > element.clientHeight + 8;
+}
+
+function showLyricScrollbarTemporarily(element) {
+  const binding = lyricScrollBindings.get(element);
+  if (!binding) {
+    return;
+  }
+  element.classList.add(LYRICS_SCROLLING_CLASS);
+  if (binding.timer !== null) {
+    window.clearTimeout(binding.timer);
+  }
+  binding.timer = window.setTimeout(() => {
+    binding.timer = null;
+    element.classList.remove(LYRICS_SCROLLING_CLASS);
+  }, 900);
+}
+
+function bindLyricScrollbar(element) {
+  if (lyricScrollBindings.has(element)) {
+    return;
+  }
+  const binding = {
+    timer: null,
+    onScroll: () => showLyricScrollbarTemporarily(element),
+  };
+  lyricScrollBindings.set(element, binding);
+  element.addEventListener("scroll", binding.onScroll, { passive: true });
+}
+
+function cleanupLyricScrollbars(root = null) {
+  for (const [element, binding] of lyricScrollBindings) {
+    if (root && element.isConnected && root.contains(element)) {
+      continue;
+    }
+    element.removeEventListener("scroll", binding.onScroll);
+    element.classList.remove(LYRICS_SCROLLING_CLASS);
+    if (binding.timer !== null) {
+      window.clearTimeout(binding.timer);
+    }
+    lyricScrollBindings.delete(element);
+  }
+}
+
+function syncLyricScrollbars(root) {
+  if (!root) {
+    cleanupLyricScrollbars();
+    return;
+  }
+  cleanupLyricScrollbars(root);
+  root
+    .querySelectorAll(".lyricsContainer, .lyricsWrapper, .lyricsScroller, [class*='lyricsContainer'], [class*='lyricsWrapper'], [class*='lyricsScroller'], [class*='LyricsContainer'], [class*='LyricsWrapper'], [class*='LyricsScroller']")
+    .forEach((element) => {
+      if (isLikelyLyricScroller(element)) {
+        bindLyricScrollbar(element);
+      }
+    });
+}
+
 function enhanceLyrics(root) {
   const view = root.querySelector(VIEW_SELECTOR);
   if (!view) {
@@ -1488,6 +1604,7 @@ function syncPolishedBigMode(root, art) {
   ensureProgress(root, art);
   syncProgress(root);
   syncHoverControls();
+  syncLyricScrollbars(root);
   enhanceLyrics(root);
 }
 
@@ -1499,6 +1616,7 @@ function syncFastBigModeState() {
   }
   syncProgress(root);
   syncHoverControls();
+  syncLyricScrollbars(root);
   enhanceLyrics(root);
 }
 
@@ -1521,6 +1639,7 @@ function restorePolishedBigMode() {
   spicyLyricsStatus = "idle";
   spicyLyricsData = null;
   lastTimedLyricLine = null;
+  cleanupLyricScrollbars();
   restoreLyricEnhancements();
 }
 

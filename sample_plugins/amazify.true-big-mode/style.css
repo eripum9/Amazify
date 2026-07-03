@@ -112,6 +112,7 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
   --amazify-true-big-mode-artwork: none;
   --amazify-true-big-mode-panel-width: clamp(320px, 24vw, 560px);
   --amazify-true-big-mode-lyrics-width: clamp(580px, 46vw, 1180px);
+  --amazify-true-big-mode-scrollbar-offset: clamp(18px, 1.35vw, 32px);
   --amazify-true-big-mode-accent: rgba(20, 180, 190, 0.86);
   background: #071012 !important;
   color: #fff !important;
@@ -330,15 +331,45 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
     linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.32)),
     rgba(0, 0, 0, 0.14) !important;
   backdrop-filter: blur(1.5px) !important;
+  display: block !important;
+  padding: 0 !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-exit-affordance {
+  position: absolute !important;
+  top: clamp(12px, 3.6%, 24px) !important;
+  right: clamp(12px, 3.6%, 24px) !important;
+  display: grid !important;
+  place-items: center !important;
+  width: clamp(34px, 3.4vw, 46px) !important;
+  height: clamp(34px, 3.4vw, 46px) !important;
+  border-radius: 999px !important;
+  background: rgba(0, 0, 0, 0.46) !important;
+  color: #fff !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42) !important;
+  pointer-events: none !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-exit-affordance .amazify-true-big-mode-exit-icon {
+  width: 62% !important;
+  height: 62% !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-hover-controls {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: clamp(14px, 6.5%, 34px) !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  gap: clamp(22px, 2.55vw, 46px) !important;
+  gap: clamp(16px, 1.9vw, 34px) !important;
   width: 100% !important;
-  padding: 0 22px !important;
+  padding: 0 clamp(12px, 3.2%, 24px) !important;
   box-sizing: border-box !important;
   pointer-events: auto !important;
 }
@@ -444,8 +475,8 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
 
 body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 [class*="lyric"],
 body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 [class*="Lyrics"] {
-  scrollbar-width: thin !important;
-  scrollbar-color: rgba(255, 255, 255, 0.32) transparent !important;
+  scrollbar-width: none !important;
+  scrollbar-color: transparent transparent !important;
 }
 
 body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 .lyricsContainer,
@@ -456,6 +487,9 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
   max-width: var(--amazify-true-big-mode-lyrics-width) !important;
   overflow-x: hidden !important;
   box-sizing: border-box !important;
+  padding-right: var(--amazify-true-big-mode-scrollbar-offset) !important;
+  margin-right: calc(var(--amazify-true-big-mode-scrollbar-offset) * -1) !important;
+  scrollbar-gutter: stable !important;
 }
 
 body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 .lyricsLine {
@@ -466,12 +500,27 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
 
 body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 [class*="lyric"]::-webkit-scrollbar,
 body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 [class*="Lyrics"]::-webkit-scrollbar {
-  width: 4px !important;
+  width: 0 !important;
+  background: transparent !important;
 }
 
 body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 [class*="lyric"]::-webkit-scrollbar-thumb,
 body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 [class*="Lyrics"]::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.32) !important;
+  background: transparent !important;
+  border-radius: 999px !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 .amazify-true-big-mode-lyrics-scrolling {
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(255, 255, 255, 0.34) transparent !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 .amazify-true-big-mode-lyrics-scrolling::-webkit-scrollbar {
+  width: 4px !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 .amazify-true-big-mode-lyrics-scrolling::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.34) !important;
   border-radius: 999px !important;
 }
 
