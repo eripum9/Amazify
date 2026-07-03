@@ -106,6 +106,11 @@ def build_runtime_script(
       cursor: pointer;
       white-space: nowrap;
       box-shadow: none;
+      flex: 0 0 auto;
+    }}
+    .amazify-header-button {{
+      gap: 10px;
+      padding-left: 9px;
     }}
     .amazify-header-button:hover,
     .amazify-plugin-action:hover {{
@@ -135,6 +140,18 @@ def build_runtime_script(
     }}
     .amazify-logo-fallback {{
       border: 1px solid rgba(255,255,255,0.12);
+    }}
+    .amazify-header-button .amazify-logo {{
+      flex: 0 0 20px;
+      min-width: 20px;
+    }}
+    .amazify-header-label {{
+      display: inline-block;
+      flex: 0 0 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1;
     }}
     .amazify-plugin-actions {{
       display: inline-flex;
@@ -541,7 +558,7 @@ def build_runtime_script(
     button.type = "button";
     button.className = "amazify-header-button";
     button.setAttribute("aria-label", "Open Amazify");
-    button.innerHTML = `${{logoMarkup()}}<span>Amazify</span>`;
+    button.innerHTML = `${{logoMarkup()}}<span class="amazify-header-label">Amazify</span>`;
     button.addEventListener("click", (event) => {{
       event.stopPropagation();
       toggleMenu(button);
