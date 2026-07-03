@@ -63,6 +63,8 @@ if errorlevel 1 (
         set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
     ) else if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" (
         set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+    ) else if exist "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" (
+        set "ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
     ) else (
         echo Inno Setup 6 compiler not found. Install Inno Setup 6 or add ISCC.exe to PATH.
         echo Built:
