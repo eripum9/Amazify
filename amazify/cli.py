@@ -21,6 +21,7 @@ from .runtime import build_cleanup_script, build_runtime_script
 LOG = logging.getLogger(__name__)
 
 
+WELCOME_STATE_VERSION = 1
 AUMID_LAUNCH_ATTEMPTS = 3
 AUMID_TARGET_TIMEOUT_SECONDS = 20
 EXE_TARGET_TIMEOUT_SECONDS = 15
@@ -95,6 +96,7 @@ def run(args: argparse.Namespace) -> int:
         bridge_port=getattr(args, "bridge_port", None),
         manual_launcher=getattr(args, "manual_launcher", None),
     )
+    show_first_run_welcome(config)
     log_file = setup_logging(config.log_dir, verbose=args.verbose)
     LOG.info("Amazify starting. Logs: %s", log_file)
 
@@ -252,6 +254,33 @@ def remember_devtools_port(config: RuntimeConfig) -> None:
         )
     except OSError as exc:
         LOG.debug("Unable to write DevTools state file: %s", exc)
+
+
+def show_first_run_welcome(config: RuntimeConfig) -> bool:
+    if config.welcome_state_file.exists():
+        return False
+    print(
+        "Welcome to Amazify.\n"
+        "Tip: use the Amazon Music (Amazify) shortcut from the installer so "
+        "Amazon Music opens through Amazify with DevTools enabled automatically.\n"
+        "Run AmazifySetup.exe --desktop-shortcut or --taskbar-shortcut to add "
+        "more launch shortcuts later.\n"
+    )
+    try:
+        config.welcome_state_file.write_text(
+            json.dumps(
+                {
+                    "version": WELCOME_STATE_VERSION,
+                    "shown_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        LOG.debug("Unable to write welcome state file: %s", exc)
+    return True
 
 
 def recent_devtools_ports(config: RuntimeConfig) -> list[int]:

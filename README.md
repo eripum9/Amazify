@@ -36,11 +36,21 @@ Implemented:
 - Python 3.10+
 - Amazon Music desktop app
 
-The standalone Windows installer is experimental and not published as a ready user build yet. When it is ready, `AmazifySetup.exe` will copy a standalone `amazify.exe` into `%LOCALAPPDATA%\Programs\Amazify`, add that folder to the user PATH, and register a user-level uninstall entry.
+The standalone Windows installer is experimental and not published as a ready user build yet. When it is ready, `AmazifySetup.exe` will copy a standalone `amazify.exe` into `%LOCALAPPDATA%\Programs\Amazify`, add that folder to the user PATH, register a user-level uninstall entry, and create a Start Menu shortcut named **Amazon Music (Amazify)** that launches `amazify run`.
 
 ```powershell
 AmazifySetup.exe
 ```
+
+Optional shortcut flags:
+
+```powershell
+AmazifySetup.exe --desktop-shortcut
+AmazifySetup.exe --taskbar-shortcut
+AmazifySetup.exe --shortcuts
+```
+
+The shortcuts use the Amazify executable icon. Taskbar pinning is best-effort because recent Windows builds can block programmatic pinning; if Windows refuses the pin action, pin **Amazon Music (Amazify)** manually from Start.
 
 For now, use this only for local packaging tests.
 

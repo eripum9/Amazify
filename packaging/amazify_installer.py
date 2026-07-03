@@ -8,6 +8,8 @@ import sys
 import winreg
 from pathlib import Path
 
+from amazify.shortcuts import install_amazify_shortcuts, remove_amazify_shortcuts
+
 
 APP_NAME = "Amazify"
 APP_VERSION = "0.1.0"
@@ -121,7 +123,7 @@ def notify_environment_change() -> None:
         pass
 
 
-def install() -> int:
+def install(args: argparse.Namespace) -> int:
     source_exe = bundled_file(EXE_NAME)
     if not source_exe.exists():
         raise RuntimeError(f"Installer is missing bundled {EXE_NAME}")
@@ -136,11 +138,21 @@ def install() -> int:
 
     path_changed = add_to_user_path(target_dir)
     write_uninstall_entry(target_dir, setup_copy)
+    shortcut_result = install_amazify_shortcuts(
+        target_exe,
+        start_menu=not args.no_start_menu_shortcut,
+        desktop=args.desktop_shortcut or args.shortcuts,
+        taskbar=args.taskbar_shortcut or args.shortcuts,
+    )
     notify_environment_change()
 
     print(f"{APP_NAME} installed.")
     print(f"Installed CLI: {target_exe}")
     print(f"Command: amazify")
+    for shortcut in shortcut_result.created:
+        print(f"Created shortcut: {shortcut}")
+    for warning in shortcut_result.warnings:
+        print(f"Shortcut warning: {warning}")
     if path_changed:
         print(f"Added to user PATH: {target_dir}")
         print("Open a new terminal if the command is not visible in this one yet.")
@@ -152,6 +164,7 @@ def install() -> int:
 def uninstall() -> int:
     target_dir = install_dir()
     remove_from_user_path(target_dir)
+    shortcut_result = remove_amazify_shortcuts()
     delete_uninstall_entry()
     notify_environment_change()
 
@@ -163,16 +176,40 @@ def uninstall() -> int:
         )
 
     print(f"{APP_NAME} uninstalled.")
+    for shortcut in shortcut_result.removed:
+        print(f"Removed shortcut: {shortcut}")
+    for warning in shortcut_result.warnings:
+        print(f"Shortcut warning: {warning}")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Install Amazify for the current Windows user.")
     parser.add_argument("--uninstall", action="store_true", help="Remove Amazify from this user account.")
+    parser.add_argument(
+        "--shortcuts",
+        action="store_true",
+        help="Create all optional launch shortcuts, including Desktop and taskbar.",
+    )
+    parser.add_argument(
+        "--desktop-shortcut",
+        action="store_true",
+        help="Create an Amazon Music (Amazify) shortcut on the Desktop.",
+    )
+    parser.add_argument(
+        "--taskbar-shortcut",
+        action="store_true",
+        help="Try to pin the Amazon Music (Amazify) shortcut to the taskbar.",
+    )
+    parser.add_argument(
+        "--no-start-menu-shortcut",
+        action="store_true",
+        help="Do not create the default Amazon Music (Amazify) Start Menu shortcut.",
+    )
     args = parser.parse_args(argv)
     if args.uninstall:
         return uninstall()
-    return install()
+    return install(args)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ from amazify.cli import (
     main,
     recent_devtools_ports,
     remember_devtools_port,
+    show_first_run_welcome,
 )
 from amazify.config import RuntimeConfig
 from amazify.devtools import DevToolsError
@@ -57,6 +58,24 @@ class CliDevToolsPortTests(unittest.TestCase):
             remember_devtools_port(config)
 
             self.assertIn('"last_port": 61234', config.devtools_state_file.read_text())
+
+    def test_first_run_welcome_prints_once(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            config = make_config(Path(temp))
+            first_output = io.StringIO()
+            second_output = io.StringIO()
+
+            with redirect_stdout(first_output):
+                first_shown = show_first_run_welcome(config)
+            with redirect_stdout(second_output):
+                second_shown = show_first_run_welcome(config)
+
+            self.assertTrue(first_shown)
+            self.assertFalse(second_shown)
+            self.assertIn("Welcome to Amazify", first_output.getvalue())
+            self.assertIn("Amazon Music (Amazify)", first_output.getvalue())
+            self.assertEqual(second_output.getvalue(), "")
+            self.assertTrue(config.welcome_state_file.exists())
 
     def test_recent_devtools_ports_prefers_state_then_recent_log_entries(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
