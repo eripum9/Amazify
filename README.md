@@ -2,70 +2,63 @@
 
 <img src="packaging/assets/logo.png" alt="Amazify logo" width="96">
 
-Amazify is a Windows prototype for customizing the Amazon Music desktop app at runtime. It is inspired by and credits [Spicetify](https://spicetify.app/) for the core idea of user-controlled music app customization, but it targets Amazon Music through a local Python companion, Chromium DevTools injection, and a small in-app plugin marketplace.
+**Amazon Music runtime customization marketplace — inspired by [Spicetify](https://spicetify.app/).**
 
-The project does not patch Amazon Music files on disk. Amazify launches or connects to Amazon Music, injects a reversible runtime, and loads local open-source plugins from the user plugin folder.
+Amazify is a Windows prototype that customizes the Amazon Music desktop app at runtime without modifying any packaged files on disk. A local Python companion launches or connects to Amazon Music, injects a reversible runtime via Chromium DevTools, and loads plugins from an in-app marketplace.
 
-## Credits
+[![Windows CI](https://github.com/eripum9/Amazify/actions/workflows/ci-windows.yml/badge.svg)](https://github.com/eripum9/Amazify/actions/workflows/ci-windows.yml)
 
-- [Spicetify](https://spicetify.app/) and its open-source ecosystem for proving how powerful a music-app customization marketplace can be.
+---
 
-## Current Status
+## Features
 
-This is an early prototype. The core flow works, but Amazon Music can change its launch behavior, DevTools target shape, or DOM selectors at any time.
+- **Runtime injection** — injects a reversible runtime into Amazon Music without touching app files
+- **In-app marketplace** — browse, download, and update plugins from inside Amazon Music
+- **Plugin catalog** — GitHub-backed catalog with explicit Download/Update/Reinstall actions
+- **Background daemon** — headless daemon with `start` / `stop` / `status` CLI commands
+- **DevTools reconnect** — automatic reconnect when Amazon Music restarts
+- **Localhost bridge** — WebSocket bridge with DevTools binding fallback
+- **Stock plugins** — four ready-to-use sample plugins (themes, layout, resume, focus mode)
+- **Permissioned metadata** — each plugin declares required permissions in its manifest
+- **GUI installer** — Inno Setup 6 installer with optional desktop and taskbar shortcuts
 
-Implemented:
-
-- Python companion CLI
-- Amazon Music launch candidate discovery
-- Store/AUMID launch with Chromium DevTools enabled
-- DevTools target validation and reconnect support
-- Runtime injection and cleanup
-- In-Amazon Amazify header button
-- In-Amazon marketplace and settings panel
-- Local installed plugin manifests under `%APPDATA%\Amazify\plugins`
-- GitHub-backed plugin catalog with explicit Download/Update actions
-- Permissioned plugin metadata
-- One-click disable for all plugins
-- Localhost bridge with DevTools binding fallback
-- Background daemon with CLI start/stop/status commands
-- Inno Setup 6 GUI installer with terminal-free shortcuts
-- Stock sample plugins
+---
 
 ## Requirements
 
-- Windows
-- Python 3.10+
-- Amazon Music desktop app
+| Requirement | Version |
+|---|---|
+| Windows | 10 or later |
+| Python | 3.10+ |
+| Amazon Music | Desktop app |
 
-The standalone Windows installer is experimental and not published as a ready user build yet. When it is ready, the Inno Setup 6 GUI installer `AmazifySetup.exe` will copy `amazify.exe` and the windowless shortcut launcher folder `amazifyw\` into `%LOCALAPPDATA%\Programs\Amazify`, add that folder to the user PATH, register a user-level uninstall entry, and create a Start Menu shortcut named **Amazon Music (Amazify)**.
+---
 
-```powershell
-AmazifySetup.exe
-```
+## Installation
 
-The installer finish page has interactive checkboxes for optional Desktop and taskbar shortcuts. Shortcuts use the Amazify icon and point at `amazifyw\amazifyw.exe run`, which starts or connects to the background daemon without opening a terminal window.
-
-Taskbar pinning is best-effort because recent Windows builds can block programmatic pinning; if Windows refuses the pin action, pin **Amazon Music (Amazify)** manually from Start.
-
-For now, use this only for local packaging tests.
-
-For source development with Python:
+### From source (recommended for development)
 
 ```powershell
+git clone https://github.com/eripum9/Amazify.git
+cd Amazify
 python -m pip install -e .
 ```
 
-Build the standalone CLI, windowless launcher, and GUI installer locally:
+### Standalone installer (experimental)
+
+The GUI installer is not yet published as a public release. Build it locally with the steps in the [Development](#development) section and run:
 
 ```powershell
-python -m pip install -e ".[build]"
-.\Build.bat
+.\dist\AmazifySetup.exe
 ```
 
-The build writes `dist\amazify.exe`, `dist\amazifyw\amazifyw.exe`, and `dist\AmazifySetup.exe`. Building the setup executable requires Inno Setup 6 (`ISCC.exe`) on PATH or installed in the default Inno Setup directory.
+The installer copies `amazify.exe` and the windowless launcher (`amazifyw\`) into `%LOCALAPPDATA%\Programs\Amazify`, adds that folder to the user `PATH`, registers a user-level uninstall entry, and creates a **Start Menu** shortcut named **Amazon Music (Amazify)**.
 
-## Run
+> **Note:** Taskbar pinning is best-effort. If Windows refuses the programmatic pin, pin **Amazon Music (Amazify)** manually from Start.
+
+---
+
+## Usage
 
 Show available commands:
 
@@ -79,7 +72,7 @@ Launch or connect to Amazon Music and inject Amazify:
 amazify run
 ```
 
-`amazify run` starts the background daemon and returns. The daemon keeps running after the terminal closes. For foreground debugging:
+`amazify run` starts the background daemon and returns immediately. The daemon keeps running after the terminal closes. For foreground/debug mode:
 
 ```powershell
 amazify run --foreground
@@ -93,7 +86,7 @@ amazify daemon status
 amazify daemon stop
 ```
 
-Connect to an already running Amazon Music DevTools session:
+Connect to an already-running Amazon Music DevTools session:
 
 ```powershell
 amazify run --connect-only --devtools-port <port>
@@ -105,45 +98,78 @@ List detected Amazon Music launch candidates:
 amazify list-candidates
 ```
 
-Run tests:
+---
+
+## Development
+
+### Setup
+
+```powershell
+python -m pip install -e .
+```
+
+### Run tests
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
 
+### Build standalone executables and installer
+
+Requires [Inno Setup 6](https://jrsoftware.org/isdl.php) (`ISCC.exe`) on `PATH` or in its default install directory.
+
+```powershell
+python -m pip install -e ".[build]"
+.\Build.bat
+```
+
+Outputs:
+
+| File | Description |
+|---|---|
+| `dist\amazify.exe` | Console CLI |
+| `dist\amazifyw\amazifyw.exe` | Windowless launcher |
+| `dist\AmazifySetup.exe` | GUI installer |
+
+---
+
 ## Plugin Catalog
 
-Catalog metadata lives in `plugin_catalog.json`. By default Amazify reads it from:
+The catalog is defined in `plugin_catalog.json` and hosted at:
 
-```text
+```
 https://raw.githubusercontent.com/eripum9/Amazify/main/plugin_catalog.json
 ```
 
-The catalog points each plugin file at a raw GitHub URL. The marketplace shows catalog entries with a **Download** button. Downloading copies the raw plugin files into `%APPDATA%\Amazify\plugins`.
+Each entry points plugin files at raw GitHub URLs. When the marketplace opens, Amazify refreshes the catalog and compares catalog manifest versions against installed versions. Installed plugins show **Update** when a newer version is available, or **Reinstall** when already up to date.
 
-Every time the marketplace opens, Amazify refreshes the catalog and compares each catalog manifest version with the installed plugin manifest version. Installed catalog-backed plugins show **Update** when the GitHub catalog has a newer version, or **Reinstall** when the installed version already matches the catalog.
-
-For local development, override the catalog URL:
+To use a local catalog during development:
 
 ```powershell
 $env:AMAZIFY_PLUGIN_CATALOG_URL = "file:///C:/path/to/plugin_catalog.json"
 python -m amazify
 ```
 
+---
+
 ## Stock Plugins
 
-Stock plugin source lives in `sample_plugins/`. These folders are source code for the GitHub catalog, not automatically installed plugin copies.
+Source lives in `sample_plugins/`. These are catalog source folders — they are not installed automatically.
 
-- `amazify.true-big-mode`: replaces Amazon Music Big Mode with a full-window lyrics-focused layout, album-art exit behavior, hidden queue/device controls, and a custom progress/control overlay.
-- `amazify.resume-last-song`: saves the current transport track locally and tries to resume it on the next Amazon Music launch.
-- `amazify.theme.dark-green`: green Amazon Music theme.
-- `amazify.button.focus-mode`: small header action that toggles a quieter focus mode.
+| Plugin ID | Description |
+|---|---|
+| `amazify.true-big-mode` | Full-window lyrics layout with custom overlay, replaces Amazon Music Big Mode |
+| `amazify.resume-last-song` | Saves and restores the current track across Amazon Music restarts |
+| `amazify.theme.dark-green` | Green color theme for Amazon Music |
+| `amazify.button.focus-mode` | Header button that toggles a quieter focus mode |
 
-Downloaded plugins are disabled by default. Enable them from the Amazify marketplace inside Amazon Music.
+Downloaded plugins are **disabled by default**. Enable them from the Amazify marketplace inside Amazon Music.
 
-## Plugin Shape
+---
 
-Each plugin is a folder with a `manifest.json` and optional JavaScript/CSS sources:
+## Plugin Development
+
+Each plugin is a folder containing a `manifest.json` and optional JavaScript/CSS files:
 
 ```json
 {
@@ -156,8 +182,7 @@ Each plugin is a folder with a `manifest.json` and optional JavaScript/CSS sourc
   "entry": "plugin.js",
   "styles": ["style.css"],
   "assets": {
-    "logo": "assets/logo.svg",
-    "displayFont": "assets/display.woff2"
+    "logo": "assets/logo.svg"
   },
   "permissions": ["dom-read", "dom-write"],
   "amazonMusic": {
@@ -167,45 +192,65 @@ Each plugin is a folder with a `manifest.json` and optional JavaScript/CSS sourc
 }
 ```
 
-Plugin JavaScript is executed with `Amazify`, `manifest`, and `source` arguments. If it returns a function, Amazify calls that function during plugin cleanup.
+- Plugin JavaScript receives `Amazify`, `manifest`, and `source` arguments. Returning a function registers it as a cleanup callback.
+- Assets (PNG, SVG, WEBP, WOFF2, JSON) are declared in `assets`. Runtime CSS automatically rewrites matching `url(...)` references to safe data URIs.
+- Use `Amazify.assets.url(manifest.id, "logo")` or `source.assetUrl("logo")` in JavaScript.
+- All plugin DOM must be removable and scoped with `data-amazify-plugin-id`.
 
-Assets can be any plugin-local file such as PNG, SVG, WEBP, WOFF2, or JSON. Declare them in `assets` as a list of paths or a name-to-path map. Runtime CSS automatically rewrites matching local `url(...)` references to safe data URIs. JavaScript can use `Amazify.assets.url(manifest.id, "logo")`, `Amazify.assets.get(manifest.id, "logo")`, or `source.assetUrl("logo")`.
+### Safety guidelines
 
-All plugin DOM should be removable and scoped with `data-amazify-plugin-id` when creating persistent nodes. Plugin CSS is mounted and removed automatically by plugin id.
+- Declare only the permissions your plugin actually needs.
+- All runtime DOM changes must be fully reversible.
+- Do not modify Amazon Music packaged files on disk.
+- Third-party plugins should be treated as untrusted until reviewed.
 
-## Safety Model
-
-Amazify treats plugins as code:
-
-- Stock marketplace plugins should be tested and open source.
-- Third-party plugins should be marked as untrusted until reviewed.
-- Permissions should stay narrow.
-- Runtime changes must be reversible.
-- Amazon Music packaged files should not be modified.
+---
 
 ## Repository Layout
 
-```text
-amazify/          Python companion, launcher, bridge, runtime injection
-amazify/assets/   Small packaged Amazify logo used by the in-app overlay
-Build.bat
-                  Builds the standalone CLI and Windows installer on Windows
-.github/workflows/
-                  Windows installer artifact build
-packaging/        PyInstaller entrypoint and Inno Setup installer script
-packaging/assets/ Amazify logo PNG and Windows ICO used for the executables
-plugin_catalog.json
-                  GitHub-backed marketplace catalog
-sample_plugins/  Stock plugin source for the catalog
-tests/           Unit tests for launcher, runtime, and plugin manager
+```
+amazify/              Python companion — launcher, DevTools bridge, runtime, plugin manager, CLI
+amazify/assets/       Packaged Amazify logo (in-app overlay)
+tests/                Unit tests
+sample_plugins/       Stock plugin source (catalog source, not auto-installed)
+packaging/            PyInstaller entry points and Inno Setup installer script
+packaging/assets/     Logo PNG and ICO for executables and installer
+plugin_catalog.json   GitHub-backed marketplace catalog
+Build.bat             Builds standalone executables and GUI installer
+.github/workflows/    CI workflows
 ```
 
-## Development Notes
+---
 
-Amazify stores runtime state outside the repo:
+## Runtime State
 
-- Plugins: `%APPDATA%\Amazify\plugins`
-- State: `%APPDATA%\Amazify`
-- Logs: `%APPDATA%\Amazify\logs`
+Amazify stores all runtime state outside the repository:
 
-If a stock plugin changes, push the update to GitHub. Users can press **Update** in the marketplace to pull the current raw plugin files.
+| Path | Contents |
+|---|---|
+| `%APPDATA%\Amazify\plugins` | Installed plugins |
+| `%APPDATA%\Amazify` | Config and state files |
+| `%APPDATA%\Amazify\logs` | Log files |
+
+---
+
+## Contributing
+
+Contributions are welcome. Please:
+
+1. Fork the repository and create a feature branch.
+2. Run `python -m unittest discover -s tests -v` and ensure all tests pass.
+3. Keep changes focused and include tests for new behavior where practical.
+4. Open a pull request with a clear description of the change.
+
+---
+
+## Credits
+
+- [Spicetify](https://spicetify.app/) and its community for pioneering music app customization marketplaces.
+
+---
+
+## License
+
+No license has been specified for this project yet. All rights reserved until a license is added.
