@@ -177,7 +177,7 @@ class CliDevToolsPortTests(unittest.TestCase):
             ):
                 command = daemon_spawn_command(args)
 
-        self.assertEqual(command, [str(sibling), "daemon", "run"])
+        self.assertEqual(command, [str(sibling.resolve()), "daemon", "run"])
 
     def test_recent_devtools_ports_prefers_state_then_recent_log_entries(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
