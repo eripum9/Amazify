@@ -253,4 +253,4 @@ Contributions are welcome. Please:
 
 ## License
 
-No license has been specified for this project yet. All rights reserved until a license is added.
+[MIT](LICENSE) © eripum9
