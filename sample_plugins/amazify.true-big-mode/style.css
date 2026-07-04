@@ -112,7 +112,7 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
   --amazify-true-big-mode-artwork: none;
   --amazify-true-big-mode-panel-width: clamp(320px, 24vw, 560px);
   --amazify-true-big-mode-lyrics-width: clamp(580px, 46vw, 1180px);
-  --amazify-true-big-mode-scrollbar-offset: clamp(18px, 1.35vw, 32px);
+  --amazify-true-big-mode-scrollbar-offset: clamp(28px, 1.8vw, 48px);
   --amazify-true-big-mode-accent: rgba(20, 180, 190, 0.86);
   background: #071012 !important;
   color: #fff !important;
@@ -487,9 +487,9 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
   max-width: var(--amazify-true-big-mode-lyrics-width) !important;
   overflow-x: hidden !important;
   box-sizing: border-box !important;
-  padding-right: var(--amazify-true-big-mode-scrollbar-offset) !important;
-  margin-right: calc(var(--amazify-true-big-mode-scrollbar-offset) * -1) !important;
-  scrollbar-gutter: stable !important;
+  padding-right: calc(var(--amazify-true-big-mode-scrollbar-offset) + 10px) !important;
+  margin-right: calc((var(--amazify-true-big-mode-scrollbar-offset) + 10px) * -1) !important;
+  scrollbar-gutter: stable both-edges !important;
 }
 
 body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 .lyricsLine {
@@ -516,7 +516,7 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
 }
 
 body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 .amazify-true-big-mode-lyrics-scrolling::-webkit-scrollbar {
-  width: 4px !important;
+  width: 5px !important;
 }
 
 body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 .amazify-true-big-mode-lyrics-scrolling::-webkit-scrollbar-thumb {

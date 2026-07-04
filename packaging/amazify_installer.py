@@ -14,6 +14,7 @@ from amazify.shortcuts import install_amazify_shortcuts, remove_amazify_shortcut
 APP_NAME = "Amazify"
 APP_VERSION = "0.1.0"
 EXE_NAME = "amazify.exe"
+WINDOWED_EXE_DIR_NAME = "amazifyw"
 WINDOWED_EXE_NAME = "amazifyw.exe"
 SETUP_NAME = "AmazifySetup.exe"
 UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Amazify"
@@ -133,14 +134,27 @@ def install(args: argparse.Namespace) -> int:
     target_dir.mkdir(parents=True, exist_ok=True)
 
     target_exe = target_dir / EXE_NAME
+    source_windowed_dir = bundled_file(WINDOWED_EXE_DIR_NAME)
     source_windowed_exe = bundled_file(WINDOWED_EXE_NAME)
-    target_windowed_exe = target_dir / WINDOWED_EXE_NAME
+    target_windowed_dir = target_dir / WINDOWED_EXE_DIR_NAME
+    target_windowed_exe = target_windowed_dir / WINDOWED_EXE_NAME
+    legacy_windowed_exe = target_dir / WINDOWED_EXE_NAME
     setup_copy = target_dir / SETUP_NAME
     shutil.copy2(source_exe, target_exe)
     shortcut_exe = target_exe
-    if source_windowed_exe.exists():
+    if source_windowed_dir.is_dir():
+        if target_windowed_dir.exists():
+            shutil.rmtree(target_windowed_dir)
+        shutil.copytree(source_windowed_dir, target_windowed_dir)
+        shortcut_exe = target_windowed_exe
+        if legacy_windowed_exe.exists():
+            legacy_windowed_exe.unlink()
+    elif source_windowed_exe.exists():
+        target_windowed_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_windowed_exe, target_windowed_exe)
         shortcut_exe = target_windowed_exe
+        if legacy_windowed_exe.exists():
+            legacy_windowed_exe.unlink()
     shutil.copy2(Path(sys.executable), setup_copy)
 
     path_changed = add_to_user_path(target_dir)

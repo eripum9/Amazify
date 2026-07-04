@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .bridge import LocalBridge
 from .config import RuntimeConfig
-from .devtools import DevToolsClient, DevToolsError, DevToolsHttp
+from .devtools import DevToolsClient, DevToolsConnectionClosed, DevToolsError, DevToolsHttp
 from .launcher import LaunchError, discover_launch_candidates, launch_candidate
 from .logging_setup import setup_logging
 from .native_bridge import NativeBindingBridge
@@ -259,6 +259,9 @@ def run_foreground(
                 break
             try:
                 client.pump(timeout=0.5)
+            except DevToolsConnectionClosed as exc:
+                LOG.info("DevTools connection closed: %s", exc)
+                return 0
             except DevToolsError as exc:
                 LOG.info("DevTools event pump stopped: %s", exc)
                 if not daemon_mode:
@@ -476,6 +479,9 @@ def daemon_spawn_command(args: argparse.Namespace) -> list[str]:
 
 def python_entry_command() -> list[str]:
     if getattr(sys, "frozen", False):
+        sibling_windowed = Path(sys.executable).resolve().parent / "amazifyw" / "amazifyw.exe"
+        if sibling_windowed.exists():
+            return [str(sibling_windowed)]
         return [sys.executable]
     return [sys.executable, "-m", "amazify"]
 

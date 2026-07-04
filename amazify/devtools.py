@@ -18,6 +18,10 @@ class DevToolsError(RuntimeError):
     pass
 
 
+class DevToolsConnectionClosed(DevToolsError):
+    pass
+
+
 @dataclass(slots=True)
 class Target:
     id: str
@@ -182,7 +186,22 @@ class DevToolsClient:
     def _recv_message(self) -> dict[str, Any]:
         if self._ws is None:
             raise DevToolsError("DevTools WebSocket is not connected")
-        raw = self._ws.recv()
+        try:
+            import websocket
+        except ImportError:
+            websocket = None
+        try:
+            raw = self._ws.recv()
+        except Exception as exc:
+            if websocket is not None and isinstance(exc, websocket.WebSocketTimeoutException):
+                raise
+            if websocket is not None and isinstance(exc, websocket.WebSocketConnectionClosedException):
+                raise DevToolsConnectionClosed("DevTools WebSocket connection closed") from exc
+            if isinstance(exc, (ConnectionResetError, BrokenPipeError, OSError)):
+                raise DevToolsConnectionClosed("DevTools WebSocket connection closed") from exc
+            raise
+        if raw in ("", None):
+            raise DevToolsConnectionClosed("DevTools WebSocket connection closed")
         data = json.loads(raw)
         if not isinstance(data, dict):
             raise DevToolsError("Unexpected DevTools WebSocket message")

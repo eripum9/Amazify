@@ -3,17 +3,39 @@ from __future__ import annotations
 import base64
 from importlib import resources
 import json
+from pathlib import Path
+import sys
 from typing import Any
 
 from . import __version__
 
 
 def _runtime_logo_data_uri() -> str:
+    logo = _read_runtime_logo()
+    return f"data:image/png;base64,{base64.b64encode(logo).decode('ascii')}" if logo else ""
+
+
+def _read_runtime_logo() -> bytes:
+    candidates: list[object] = []
     try:
-        logo = resources.files("amazify").joinpath("assets/logo.png").read_bytes()
+        candidates.append(resources.files("amazify").joinpath("assets/logo.png"))
     except (FileNotFoundError, ModuleNotFoundError, OSError):
-        return ""
-    return f"data:image/png;base64,{base64.b64encode(logo).decode('ascii')}"
+        pass
+
+    package_dir = Path(__file__).resolve().parent
+    candidates.append(package_dir / "assets" / "logo.png")
+    mei_pass = getattr(sys, "_MEIPASS", None)
+    if mei_pass:
+        candidates.append(Path(mei_pass) / "amazify" / "assets" / "logo.png")
+
+    for candidate in candidates:
+        try:
+            data = candidate.read_bytes()
+        except (FileNotFoundError, OSError, AttributeError):
+            continue
+        if data:
+            return data
+    return b""
 
 
 def build_runtime_script(

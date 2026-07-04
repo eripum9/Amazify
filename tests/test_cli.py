@@ -154,6 +154,29 @@ class CliDevToolsPortTests(unittest.TestCase):
             ],
         )
 
+    def test_daemon_spawn_command_prefers_windowed_sibling_for_frozen_cli(self) -> None:
+        args = mock.Mock(
+            devtools_port=None,
+            bridge_port=None,
+            manual_launcher=None,
+            connect_only=False,
+            verbose=False,
+        )
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            sibling = root / "amazifyw" / "amazifyw.exe"
+            sibling.parent.mkdir()
+            sibling.write_text("placeholder", encoding="utf-8")
+
+            with (
+                mock.patch("amazify.cli.sys.frozen", True, create=True),
+                mock.patch("amazify.cli.sys.executable", str(root / "amazify.exe")),
+            ):
+                command = daemon_spawn_command(args)
+
+        self.assertEqual(command, [str(sibling), "daemon", "run"])
+
     def test_recent_devtools_ports_prefers_state_then_recent_log_entries(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             config = make_config(Path(temp))

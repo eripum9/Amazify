@@ -38,13 +38,13 @@ Implemented:
 - Python 3.10+
 - Amazon Music desktop app
 
-The standalone Windows installer is experimental and not published as a ready user build yet. When it is ready, the Inno Setup 6 GUI installer `AmazifySetup.exe` will copy `amazify.exe` and the windowless shortcut launcher `amazifyw.exe` into `%LOCALAPPDATA%\Programs\Amazify`, add that folder to the user PATH, register a user-level uninstall entry, and create a Start Menu shortcut named **Amazon Music (Amazify)**.
+The standalone Windows installer is experimental and not published as a ready user build yet. When it is ready, the Inno Setup 6 GUI installer `AmazifySetup.exe` will copy `amazify.exe` and the windowless shortcut launcher folder `amazifyw\` into `%LOCALAPPDATA%\Programs\Amazify`, add that folder to the user PATH, register a user-level uninstall entry, and create a Start Menu shortcut named **Amazon Music (Amazify)**.
 
 ```powershell
 AmazifySetup.exe
 ```
 
-The installer finish page has interactive checkboxes for optional Desktop and taskbar shortcuts. Shortcuts use the Amazify icon and point at `amazifyw.exe run`, which starts or connects to the background daemon without opening a terminal window.
+The installer finish page has interactive checkboxes for optional Desktop and taskbar shortcuts. Shortcuts use the Amazify icon and point at `amazifyw\amazifyw.exe run`, which starts or connects to the background daemon without opening a terminal window.
 
 Taskbar pinning is best-effort because recent Windows builds can block programmatic pinning; if Windows refuses the pin action, pin **Amazon Music (Amazify)** manually from Start.
 
@@ -63,7 +63,7 @@ python -m pip install -e ".[build]"
 .\Build.bat
 ```
 
-The build writes `dist\amazify.exe`, `dist\amazifyw.exe`, and `dist\AmazifySetup.exe`. Building the setup executable requires Inno Setup 6 (`ISCC.exe`) on PATH or installed in the default Inno Setup directory.
+The build writes `dist\amazify.exe`, `dist\amazifyw\amazifyw.exe`, and `dist\AmazifySetup.exe`. Building the setup executable requires Inno Setup 6 (`ISCC.exe`) on PATH or installed in the default Inno Setup directory.
 
 ## Run
 

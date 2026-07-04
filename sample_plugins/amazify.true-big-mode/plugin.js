@@ -18,6 +18,8 @@ const WORD_ACTIVE_CLASS = "amazify-true-big-mode-word-active";
 const LYRICS_SCROLLING_CLASS = "amazify-true-big-mode-lyrics-scrolling";
 const SPICY_LYRICS_API_URL = "https://api.spicylyrics.org";
 const SPICY_LYRICS_VERSION = "1.1";
+const LYRICS_MANUAL_SCROLL_WINDOW_MS = 1200;
+const LYRICS_SCROLLBAR_HIDE_DELAY_MS = 900;
 const SPOTIFY_TOKEN_STORAGE_KEY = "amazify.true-big-mode.spotifyAccessToken";
 const SPOTIFY_TRACK_ID_STORAGE_KEY = "amazify.true-big-mode.spotifyTrackId";
 const SPOTIFY_TRACK_ID_PREFIX = "amazify.true-big-mode.spotifyTrackId:";
@@ -1497,7 +1499,41 @@ function showLyricScrollbarTemporarily(element) {
   binding.timer = window.setTimeout(() => {
     binding.timer = null;
     element.classList.remove(LYRICS_SCROLLING_CLASS);
-  }, 900);
+  }, LYRICS_SCROLLBAR_HIDE_DELAY_MS);
+}
+
+function hideLyricScrollbar(element) {
+  const binding = lyricScrollBindings.get(element);
+  if (!binding) {
+    return;
+  }
+  if (binding.timer !== null) {
+    window.clearTimeout(binding.timer);
+    binding.timer = null;
+  }
+  element.classList.remove(LYRICS_SCROLLING_CLASS);
+}
+
+function markManualLyricScroll(element) {
+  const binding = lyricScrollBindings.get(element);
+  if (!binding) {
+    return;
+  }
+  binding.manualUntil = window.performance.now() + LYRICS_MANUAL_SCROLL_WINDOW_MS;
+}
+
+function onLyricScrollKeydown(event, element) {
+  if (
+    event.key === "ArrowDown" ||
+    event.key === "ArrowUp" ||
+    event.key === "PageDown" ||
+    event.key === "PageUp" ||
+    event.key === "Home" ||
+    event.key === "End" ||
+    event.key === " "
+  ) {
+    markManualLyricScroll(element);
+  }
 }
 
 function bindLyricScrollbar(element) {
@@ -1506,10 +1542,25 @@ function bindLyricScrollbar(element) {
   }
   const binding = {
     timer: null,
-    onScroll: () => showLyricScrollbarTemporarily(element),
+    manualUntil: 0,
+    onScroll: () => {
+      if (window.performance.now() <= binding.manualUntil) {
+        showLyricScrollbarTemporarily(element);
+      } else {
+        hideLyricScrollbar(element);
+      }
+    },
+    onWheel: () => markManualLyricScroll(element),
+    onPointerDown: () => markManualLyricScroll(element),
+    onTouchStart: () => markManualLyricScroll(element),
+    onKeydown: (event) => onLyricScrollKeydown(event, element),
   };
   lyricScrollBindings.set(element, binding);
   element.addEventListener("scroll", binding.onScroll, { passive: true });
+  element.addEventListener("wheel", binding.onWheel, { passive: true });
+  element.addEventListener("pointerdown", binding.onPointerDown, { passive: true });
+  element.addEventListener("touchstart", binding.onTouchStart, { passive: true });
+  element.addEventListener("keydown", binding.onKeydown, true);
 }
 
 function cleanupLyricScrollbars(root = null) {
@@ -1518,6 +1569,10 @@ function cleanupLyricScrollbars(root = null) {
       continue;
     }
     element.removeEventListener("scroll", binding.onScroll);
+    element.removeEventListener("wheel", binding.onWheel);
+    element.removeEventListener("pointerdown", binding.onPointerDown);
+    element.removeEventListener("touchstart", binding.onTouchStart);
+    element.removeEventListener("keydown", binding.onKeydown, true);
     element.classList.remove(LYRICS_SCROLLING_CLASS);
     if (binding.timer !== null) {
       window.clearTimeout(binding.timer);

@@ -26,6 +26,7 @@ if not exist "%DIST%" mkdir "%DIST%"
 if not exist "%SPEC%" mkdir "%SPEC%"
 if exist "%DIST%\amazify.exe" del /f /q "%DIST%\amazify.exe"
 if exist "%DIST%\amazifyw.exe" del /f /q "%DIST%\amazifyw.exe"
+if exist "%DIST%\amazifyw" rmdir /s /q "%DIST%\amazifyw"
 if exist "%DIST%\AmazifySetup.exe" del /f /q "%DIST%\AmazifySetup.exe"
 
 if not exist "%ICON%" (
@@ -48,10 +49,10 @@ if not exist "%AMAZIFY_EXE%" (
     goto :fail
 )
 
-call :run "%PYTHON%" -m PyInstaller --noconfirm --clean --onefile --windowed --icon "%ICON%" --add-data "%RUNTIME_LOGO%;amazify\assets" --name amazifyw --distpath "%DIST%" --workpath "%BUILD%\amazifyw" --specpath "%SPEC%" "%AMAZIFY_ENTRY%"
+call :run "%PYTHON%" -m PyInstaller --noconfirm --clean --onedir --windowed --icon "%ICON%" --add-data "%RUNTIME_LOGO%;amazify\assets" --name amazifyw --distpath "%DIST%" --workpath "%BUILD%\amazifyw" --specpath "%SPEC%" "%AMAZIFY_ENTRY%"
 if errorlevel 1 goto :fail
 
-set "AMAZIFYW_EXE=%DIST%\amazifyw.exe"
+set "AMAZIFYW_EXE=%DIST%\amazifyw\amazifyw.exe"
 if not exist "%AMAZIFYW_EXE%" (
     echo Expected build output missing: %AMAZIFYW_EXE%
     goto :fail
