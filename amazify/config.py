@@ -12,6 +12,7 @@ DEVTOOLS_HOST = "127.0.0.1"
 DEFAULT_KNOWN_AUMID = (
     "AmazonMobileLLC.AmazonMusic_kc6t79cpj4tp0!AmazonMobileLLC.AmazonMusic"
 )
+AMAZIFY_WINDOW_APP_USER_MODEL_ID = "Amazify.AmazonMusic"
 
 
 def appdata_root() -> Path:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -8,6 +9,7 @@ from pathlib import Path
 
 SHORTCUT_BASENAME = "Amazon Music (Amazify)"
 SHORTCUT_FILENAME = f"{SHORTCUT_BASENAME}.lnk"
+START_MENU_FOLDER = "Amazify"
 
 
 @dataclass(slots=True)
@@ -18,7 +20,11 @@ class ShortcutInstallResult:
 
 
 def start_menu_shortcut_path() -> Path:
-    return _appdata_path() / "Microsoft" / "Windows" / "Start Menu" / "Programs" / SHORTCUT_FILENAME
+    return _start_menu_programs_path() / START_MENU_FOLDER / SHORTCUT_FILENAME
+
+
+def legacy_start_menu_shortcut_path() -> Path:
+    return _start_menu_programs_path() / SHORTCUT_FILENAME
 
 
 def desktop_shortcut_path() -> Path:
@@ -47,6 +53,7 @@ def install_amazify_shortcuts(
     taskbar: bool = False,
 ) -> ShortcutInstallResult:
     result = ShortcutInstallResult()
+    _remove_legacy_start_menu_shortcut(result)
     shortcut_for_taskbar: Path | None = None
 
     if start_menu:
@@ -57,19 +64,34 @@ def install_amazify_shortcuts(
 
     if desktop:
         shortcut = desktop_shortcut_path()
-        create_amazify_shortcut(shortcut, target_exe)
+        existing_start_menu_shortcut = _existing_start_menu_shortcut()
+        if not start_menu and existing_start_menu_shortcut.exists():
+            shortcut.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(existing_start_menu_shortcut, shortcut)
+        else:
+            create_amazify_shortcut(shortcut, target_exe)
         result.created.append(shortcut)
         shortcut_for_taskbar = shortcut_for_taskbar or shortcut
 
     if taskbar:
         if shortcut_for_taskbar is None:
-            shortcut_for_taskbar = start_menu_shortcut_path()
-            create_amazify_shortcut(shortcut_for_taskbar, target_exe)
-            result.created.append(shortcut_for_taskbar)
+            existing_start_menu_shortcut = _existing_start_menu_shortcut()
+            if existing_start_menu_shortcut.exists():
+                shortcut_for_taskbar = existing_start_menu_shortcut
+            else:
+                shortcut_for_taskbar = start_menu_shortcut_path()
+                create_amazify_shortcut(shortcut_for_taskbar, target_exe)
+                result.created.append(shortcut_for_taskbar)
         try:
             pin_shortcut_to_taskbar(shortcut_for_taskbar)
+            taskbar_shortcut = taskbar_shortcut_path()
+            taskbar_shortcut.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(shortcut_for_taskbar, taskbar_shortcut)
+            result.created.append(taskbar_shortcut)
         except ShortcutError as exc:
             result.warnings.append(str(exc))
+        except OSError as exc:
+            result.warnings.append(f"Unable to refresh taskbar shortcut {taskbar_shortcut_path()}: {exc}")
 
     return result
 
@@ -78,6 +100,7 @@ def remove_amazify_shortcuts() -> ShortcutInstallResult:
     result = ShortcutInstallResult()
     for shortcut in [
         start_menu_shortcut_path(),
+        legacy_start_menu_shortcut_path(),
         desktop_shortcut_path(),
         taskbar_shortcut_path(),
     ]:
@@ -146,6 +169,32 @@ def _appdata_path() -> Path:
     if not appdata:
         raise ShortcutError("APPDATA is not set")
     return Path(appdata)
+
+
+def _start_menu_programs_path() -> Path:
+    return _appdata_path() / "Microsoft" / "Windows" / "Start Menu" / "Programs"
+
+
+def _existing_start_menu_shortcut() -> Path:
+    preferred = start_menu_shortcut_path()
+    if preferred.exists():
+        return preferred
+
+    legacy = legacy_start_menu_shortcut_path()
+    if legacy.exists():
+        return legacy
+
+    return preferred
+
+
+def _remove_legacy_start_menu_shortcut(result: ShortcutInstallResult) -> None:
+    legacy = legacy_start_menu_shortcut_path()
+    try:
+        if legacy.exists():
+            legacy.unlink()
+            result.removed.append(legacy)
+    except OSError as exc:
+        result.warnings.append(f"Unable to remove legacy shortcut {legacy}: {exc}")
 
 
 def _run_powershell(script: str) -> None:

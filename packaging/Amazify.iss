@@ -5,6 +5,7 @@
 #define AppWindowedExeDir "amazifyw"
 #define AppWindowedExeName "amazifyw.exe"
 #define AppWindowedExePath "amazifyw\amazifyw.exe"
+#define AmazifyAppUserModelID "Amazify.AmazonMusic"
 
 [Setup]
 AppId={{74E5EBA7-A863-4C43-9D9F-DF1F8D31D9A3}
@@ -34,9 +35,13 @@ Source: "..\dist\{#AppWindowedExeDir}\*"; DestDir: "{app}\{#AppWindowedExeDir}";
 
 [InstallDelete]
 Type: files; Name: "{app}\{#AppWindowedExeName}"
+Type: files; Name: "{group}\Amazon Music (Amazify).lnk"
+Type: files; Name: "{userprograms}\Amazon Music (Amazify).lnk"
+Type: files; Name: "{userdesktop}\Amazon Music (Amazify).lnk"
+Type: files; Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\Amazon Music (Amazify).lnk"
 
 [Icons]
-Name: "{group}\Amazon Music (Amazify)"; Filename: "{app}\{#AppWindowedExePath}"; Parameters: "run"; WorkingDir: "{app}\{#AppWindowedExeDir}"; IconFilename: "{app}\{#AppWindowedExePath}"; Comment: "Launch Amazon Music through Amazify"
+Name: "{group}\Amazon Music (Amazify)"; Filename: "{app}\{#AppWindowedExePath}"; Parameters: "run"; WorkingDir: "{app}\{#AppWindowedExeDir}"; IconFilename: "{app}\{#AppWindowedExePath}"; Comment: "Launch Amazon Music through Amazify"; AppUserModelID: "{#AmazifyAppUserModelID}"
 Name: "{group}\Amazify CLI"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "Open the Amazify command line"
 
 [Run]

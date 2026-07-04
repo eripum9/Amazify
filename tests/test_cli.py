@@ -9,6 +9,7 @@ from unittest import mock
 
 from amazify.cli import (
     connect_or_launch,
+    connect_or_launch_result,
     daemon_spawn_command,
     main,
     recent_devtools_ports,
@@ -18,6 +19,7 @@ from amazify.cli import (
 )
 from amazify.config import RuntimeConfig
 from amazify.devtools import DevToolsError
+from amazify.launcher import LaunchCandidate
 
 
 def make_config(root: Path, devtools_port: int = 4444) -> RuntimeConfig:
@@ -222,6 +224,34 @@ class CliDevToolsPortTests(unittest.TestCase):
             self.assertIs(result, target)
             self.assertEqual(config.devtools_port, 51172)
             launch_candidate.assert_not_called()
+
+    def test_connect_or_launch_result_marks_fresh_launch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            config = make_config(Path(temp), devtools_port=51394)
+            target = object()
+
+            class FakeDevToolsHttp:
+                def __init__(self, port: int) -> None:
+                    self.port = port
+
+                def wait_for_amazon_music_target(self, timeout_seconds: float) -> object:
+                    return target
+
+            candidates = [LaunchCandidate("aumid", "AmazonMusic_app!App", "Amazon Music")]
+            with (
+                mock.patch("amazify.cli.DevToolsHttp", FakeDevToolsHttp),
+                mock.patch("amazify.cli.discover_launch_candidates", return_value=candidates),
+                mock.patch("amazify.cli.launch_candidate") as launch_candidate,
+            ):
+                result = connect_or_launch_result(
+                    config,
+                    connect_only=False,
+                    prefer_known_ports=False,
+                )
+
+            self.assertIs(result.target, target)
+            self.assertTrue(result.launched_by_amazify)
+            launch_candidate.assert_called_once_with(candidates[0], 51394)
 
 
 if __name__ == "__main__":

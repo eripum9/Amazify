@@ -10,6 +10,7 @@ import signal
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from .bridge import LocalBridge
@@ -20,6 +21,7 @@ from .logging_setup import setup_logging
 from .native_bridge import NativeBindingBridge
 from .plugin_manager import PluginManager
 from .runtime import build_cleanup_script, build_runtime_script
+from .window_identity import apply_amazify_window_identity
 
 
 LOG = logging.getLogger(__name__)
@@ -38,6 +40,12 @@ RETRY_DELAY_SECONDS = 2
 KNOWN_PORT_PROBE_TIMEOUT_SECONDS = 1.25
 KNOWN_PORT_LIMIT = 8
 DEVTOOLS_PORT_PATTERN = re.compile(r"(?:DevTools port:|with DevTools port)\s*(\d+)")
+
+
+@dataclass(slots=True)
+class ConnectedTarget:
+    target: object
+    launched_by_amazify: bool = False
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -209,11 +217,12 @@ def run_foreground(
             )
             remove_daemon_stop_file(config)
         explicit_devtools_port = getattr(args, "devtools_port", None) is not None
-        target = connect_or_launch(
+        connection = connect_or_launch_result(
             config,
             connect_only=getattr(args, "connect_only", False),
             prefer_known_ports=not explicit_devtools_port,
         )
+        target = connection.target
         client = DevToolsClient(target)
         client.connect()
         native_bridge = NativeBindingBridge(client, plugin_manager)
@@ -225,6 +234,18 @@ def run_foreground(
             probe.get("title"),
             probe.get("href"),
         )
+        if connection.launched_by_amazify:
+            try:
+                tagged_windows = apply_amazify_window_identity(client)
+                if tagged_windows:
+                    LOG.info(
+                        "Applied Amazify taskbar identity to %s Amazon Music window(s)",
+                        tagged_windows,
+                    )
+                else:
+                    LOG.info("No native Amazon Music window was tagged for Amazify identity")
+            except Exception as exc:
+                LOG.debug("Unable to apply Amazify taskbar identity: %s", exc, exc_info=True)
         client.evaluate(build_cleanup_script())
         result = client.evaluate(
             build_runtime_script(
@@ -572,15 +593,31 @@ def connect_or_launch(
     connect_only: bool,
     prefer_known_ports: bool = True,
 ) -> object:
+    return connect_or_launch_result(
+        config,
+        connect_only=connect_only,
+        prefer_known_ports=prefer_known_ports,
+    ).target
+
+
+def connect_or_launch_result(
+    config: RuntimeConfig,
+    *,
+    connect_only: bool,
+    prefer_known_ports: bool = True,
+) -> ConnectedTarget:
     if prefer_known_ports:
         target = connect_to_known_devtools_port(config)
         if target is not None:
-            return target
+            return ConnectedTarget(target, launched_by_amazify=False)
 
     http = DevToolsHttp(config.devtools_port)
     if connect_only:
         LOG.info("Connecting to existing DevTools target on port %s", config.devtools_port)
-        return http.wait_for_amazon_music_target(timeout_seconds=30)
+        return ConnectedTarget(
+            http.wait_for_amazon_music_target(timeout_seconds=30),
+            launched_by_amazify=False,
+        )
 
     candidates = discover_launch_candidates(config.manual_launcher)
     if not candidates:
@@ -597,7 +634,10 @@ def connect_or_launch(
         for attempt in range(1, attempts + 1):
             try:
                 launch_candidate(candidate, config.devtools_port)
-                return http.wait_for_amazon_music_target(timeout_seconds=timeout_seconds)
+                return ConnectedTarget(
+                    http.wait_for_amazon_music_target(timeout_seconds=timeout_seconds),
+                    launched_by_amazify=True,
+                )
             except (LaunchError, DevToolsError, OSError) as exc:
                 LOG.info(
                     "Launch candidate failed: %s attempt %s/%s (%s)",
