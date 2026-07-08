@@ -104,21 +104,31 @@ begin
   UpperRemove := Uppercase(RemovePath);
   Len         := Length(UpperRemove);
 
-  { Try ";RemovePath" — entry in the middle or at the end. }
+  { Search for RemovePath surrounded by semicolons in the padded string
+    ';' + OldPath + ';'.  P is the 1-based position of the leading ';' of
+    the match in that padded string. }
   P := Pos(';' + UpperRemove + ';', ';' + UpperOld + ';');
-  if P > 0 then
+  if P = 0 then Exit;
+
+  if P = 1 then
   begin
-    { P is 1-based position inside ';'+OldPath+';'.
-      The ';' before RemovePath is at position P in that augmented string,
-      which corresponds to position P-1 in OldPath.
-      We want to delete ";RemovePath" = 1 + Len characters starting at P-1. }
-    if P = 1 then
-      { Entry is at the very beginning — remove "RemovePath;" instead. }
-      Delete(OldPath, 1, Len + 1)
-    else
-      Delete(OldPath, P - 1, Len + 1);
-    RegWriteExpandStringValue(HKEY_CURRENT_USER, EnvironmentRegKey, 'Path', OldPath);
+    { RemovePath is at the start of OldPath.  Remove "RemovePath;" (Len + 1
+      chars).  If RemovePath is the only entry, Len + 1 > Length(OldPath), so
+      Pascal's Delete removes everything, leaving an empty string — which is
+      correct. }
+    Delete(OldPath, 1, Len + 1);
+  end
+  else
+  begin
+    { RemovePath is preceded by at least one other entry.  In the padded
+      string, position P is the ';' immediately before RemovePath.  That
+      semicolon lives at position P - 1 in the original OldPath (because the
+      padded string prepends one extra ';').  Remove ";RemovePath" = Len + 1
+      chars starting at that position. }
+    Delete(OldPath, P - 1, Len + 1);
   end;
+
+  RegWriteExpandStringValue(HKEY_CURRENT_USER, EnvironmentRegKey, 'Path', OldPath);
 end;
 
 { Hook: add the install directory to user PATH after installation. }

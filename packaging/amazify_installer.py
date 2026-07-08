@@ -105,7 +105,7 @@ def delete_uninstall_entry() -> None:
 
 
 def _is_windowed() -> bool:
-    """Return True when running as a windowless PyInstaller executable (no console)."""
+    """Return True when running as a windowed PyInstaller executable (no console)."""
     return sys.stdout is None
 
 
