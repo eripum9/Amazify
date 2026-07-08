@@ -25,6 +25,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+ChangesEnvironment=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -52,3 +53,84 @@ Filename: "{app}\{#AppWindowedExePath}"; Parameters: "run"; Description: "Start 
 [UninstallRun]
 Filename: "{app}\{#AppWindowedExePath}"; Parameters: "daemon stop"; Flags: runhidden waituntilterminated; RunOnceId: "StopDaemon"
 Filename: "{app}\{#AppWindowedExePath}"; Parameters: "shortcuts remove"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveShortcuts"
+
+[Code]
+{ ------------------------------------------------------------------ }
+{  User PATH helpers                                                   }
+{ ------------------------------------------------------------------ }
+
+const
+  EnvironmentRegKey = 'Environment';
+
+{ Return True when InstallPath is not already present in the user PATH. }
+function NeedsAddPath(const InstallPath: string): Boolean;
+var
+  ExistingPath: string;
+begin
+  if not RegQueryStringValue(HKEY_CURRENT_USER, EnvironmentRegKey, 'Path', ExistingPath) then
+  begin
+    Result := True;
+    Exit;
+  end;
+  Result := Pos(';' + Uppercase(InstallPath) + ';',
+                ';' + Uppercase(ExistingPath) + ';') = 0;
+end;
+
+{ Append InstallPath to the user PATH if it is not already present. }
+procedure AddToUserPath(const InstallPath: string);
+var
+  ExistingPath: string;
+begin
+  if not NeedsAddPath(InstallPath) then Exit;
+  if not RegQueryStringValue(HKEY_CURRENT_USER, EnvironmentRegKey, 'Path', ExistingPath) then
+    ExistingPath := '';
+  if ExistingPath <> '' then
+    ExistingPath := ExistingPath + ';' + InstallPath
+  else
+    ExistingPath := InstallPath;
+  RegWriteExpandStringValue(HKEY_CURRENT_USER, EnvironmentRegKey, 'Path', ExistingPath);
+end;
+
+{ Remove RemovePath from the user PATH (case-insensitive). }
+procedure RemoveFromUserPath(const RemovePath: string);
+var
+  OldPath: string;
+  UpperOld, UpperRemove: string;
+  P, Len: Integer;
+begin
+  if not RegQueryStringValue(HKEY_CURRENT_USER, EnvironmentRegKey, 'Path', OldPath) then Exit;
+
+  UpperOld    := Uppercase(OldPath);
+  UpperRemove := Uppercase(RemovePath);
+  Len         := Length(UpperRemove);
+
+  { Try ";RemovePath" — entry in the middle or at the end. }
+  P := Pos(';' + UpperRemove + ';', ';' + UpperOld + ';');
+  if P > 0 then
+  begin
+    { P is 1-based position inside ';'+OldPath+';'.
+      The ';' before RemovePath is at position P in that augmented string,
+      which corresponds to position P-1 in OldPath.
+      We want to delete ";RemovePath" = 1 + Len characters starting at P-1. }
+    if P = 1 then
+      { Entry is at the very beginning — remove "RemovePath;" instead. }
+      Delete(OldPath, 1, Len + 1)
+    else
+      Delete(OldPath, P - 1, Len + 1);
+    RegWriteExpandStringValue(HKEY_CURRENT_USER, EnvironmentRegKey, 'Path', OldPath);
+  end;
+end;
+
+{ Hook: add the install directory to user PATH after installation. }
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    AddToUserPath(ExpandConstant('{app}'));
+end;
+
+{ Hook: remove the install directory from user PATH on uninstall. }
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usPostUninstall then
+    RemoveFromUserPath(ExpandConstant('{app}'));
+end;

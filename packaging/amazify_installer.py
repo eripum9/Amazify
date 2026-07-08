@@ -104,6 +104,25 @@ def delete_uninstall_entry() -> None:
         pass
 
 
+def _is_windowed() -> bool:
+    """Return True when running as a windowless PyInstaller executable (no console)."""
+    return sys.stdout is None
+
+
+def _message_box(title: str, message: str, *, error: bool = False) -> None:
+    """Show a Windows MessageBox.  Used for feedback in windowed (no-console) mode."""
+    try:
+        import ctypes
+
+        MB_OK = 0x0
+        MB_ICONERROR = 0x10
+        MB_ICONINFORMATION = 0x40
+        icon = MB_ICONERROR if error else MB_ICONINFORMATION
+        ctypes.windll.user32.MessageBoxW(0, message, title, MB_OK | icon)
+    except Exception:
+        pass
+
+
 def notify_environment_change() -> None:
     try:
         import ctypes
@@ -167,18 +186,29 @@ def install(args: argparse.Namespace) -> int:
     )
     notify_environment_change()
 
-    print(f"{APP_NAME} installed.")
-    print(f"Installed CLI: {target_exe}")
-    print(f"Command: amazify")
+    lines: list[str] = []
+    lines.append(f"{APP_NAME} installed.")
+    lines.append(f"Installed CLI: {target_exe}")
+    lines.append(f"Command: amazify")
     for shortcut in shortcut_result.created:
-        print(f"Created shortcut: {shortcut}")
+        lines.append(f"Created shortcut: {shortcut}")
     for warning in shortcut_result.warnings:
-        print(f"Shortcut warning: {warning}")
+        lines.append(f"Shortcut warning: {warning}")
     if path_changed:
-        print(f"Added to user PATH: {target_dir}")
-        print("Open a new terminal if the command is not visible in this one yet.")
+        lines.append(f"Added to user PATH: {target_dir}")
+        lines.append("Open a new terminal if the command is not visible in this one yet.")
     else:
-        print("User PATH already contains the install directory.")
+        lines.append("User PATH already contains the install directory.")
+    for line in lines:
+        print(line)
+    if _is_windowed():
+        summary = (
+            f"{APP_NAME} has been installed successfully.\n\n"
+            f"Launch Amazon Music (Amazify) from the Start Menu to get started."
+        )
+        if shortcut_result.warnings:
+            summary += "\n\nWarnings:\n" + "\n".join(shortcut_result.warnings)
+        _message_box(f"{APP_NAME} Setup", summary)
     return 0
 
 
@@ -201,6 +231,11 @@ def uninstall() -> int:
         print(f"Removed shortcut: {shortcut}")
     for warning in shortcut_result.warnings:
         print(f"Shortcut warning: {warning}")
+    if _is_windowed():
+        summary = f"{APP_NAME} has been uninstalled."
+        if shortcut_result.warnings:
+            summary += "\n\nWarnings:\n" + "\n".join(shortcut_result.warnings)
+        _message_box(f"{APP_NAME} Setup", summary)
     return 0
 
 
@@ -237,5 +272,12 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except Exception as exc:
-        print(f"Install failed: {exc}", file=sys.stderr)
+        msg = f"Install failed: {exc}"
+        if sys.stderr is not None:
+            try:
+                print(msg, file=sys.stderr)
+            except (AttributeError, OSError):
+                pass
+        if _is_windowed():
+            _message_box(f"{APP_NAME} Setup", msg, error=True)
         raise SystemExit(1)
