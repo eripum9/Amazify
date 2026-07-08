@@ -11,12 +11,15 @@ from unittest import mock
 if "winreg" not in sys.modules:
     sys.modules["winreg"] = types.ModuleType("winreg")
 
-# Ensure packaging/ is on sys.path so the installer module can be imported.
+# Ensure packaging/ is on sys.path so the installer module can be imported,
+# then restore sys.path to avoid polluting the import namespace.
 _packaging_dir = str(Path(__file__).parent.parent / "packaging")
-if _packaging_dir not in sys.path:
-    sys.path.insert(0, _packaging_dir)
-
-import amazify_installer  # noqa: E402
+_saved_sys_path = sys.path[:]
+sys.path.insert(0, _packaging_dir)
+try:
+    import amazify_installer  # noqa: E402
+finally:
+    sys.path[:] = _saved_sys_path
 
 
 class InstallerWindowedDetectionTests(unittest.TestCase):

@@ -199,9 +199,11 @@ def install(args: argparse.Namespace) -> int:
         lines.append("Open a new terminal if the command is not visible in this one yet.")
     else:
         lines.append("User PATH already contains the install directory.")
-    for line in lines:
-        print(line)
-    if _is_windowed():
+    windowed = _is_windowed()
+    if sys.stdout is not None:
+        for line in lines:
+            print(line)
+    if windowed:
         summary = (
             f"{APP_NAME} has been installed successfully.\n\n"
             f"Launch Amazon Music (Amazify) from the Start Menu to get started."
@@ -226,12 +228,14 @@ def uninstall() -> int:
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
 
-    print(f"{APP_NAME} uninstalled.")
-    for shortcut in shortcut_result.removed:
-        print(f"Removed shortcut: {shortcut}")
-    for warning in shortcut_result.warnings:
-        print(f"Shortcut warning: {warning}")
-    if _is_windowed():
+    windowed = _is_windowed()
+    if sys.stdout is not None:
+        print(f"{APP_NAME} uninstalled.")
+        for shortcut in shortcut_result.removed:
+            print(f"Removed shortcut: {shortcut}")
+        for warning in shortcut_result.warnings:
+            print(f"Shortcut warning: {warning}")
+    if windowed:
         summary = f"{APP_NAME} has been uninstalled."
         if shortcut_result.warnings:
             summary += "\n\nWarnings:\n" + "\n".join(shortcut_result.warnings)

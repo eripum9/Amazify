@@ -91,44 +91,47 @@ begin
   RegWriteExpandStringValue(HKEY_CURRENT_USER, EnvironmentRegKey, 'Path', ExistingPath);
 end;
 
-{ Remove RemovePath from the user PATH (case-insensitive). }
+{ Remove all occurrences of RemovePath from the user PATH (case-insensitive). }
 procedure RemoveFromUserPath(const RemovePath: string);
 var
   OldPath: string;
   UpperOld, UpperRemove: string;
   P, Len: Integer;
+  Changed: Boolean;
 begin
   if not RegQueryStringValue(HKEY_CURRENT_USER, EnvironmentRegKey, 'Path', OldPath) then Exit;
 
-  UpperOld    := Uppercase(OldPath);
   UpperRemove := Uppercase(RemovePath);
   Len         := Length(UpperRemove);
+  Changed     := False;
 
-  { Search for RemovePath surrounded by semicolons in the padded string
-    ';' + OldPath + ';'.  P is the 1-based position of the leading ';' of
-    the match in that padded string. }
-  P := Pos(';' + UpperRemove + ';', ';' + UpperOld + ';');
-  if P = 0 then Exit;
+  { Loop until all occurrences of RemovePath have been removed. }
+  repeat
+    UpperOld := Uppercase(OldPath);
+    P := Pos(';' + UpperRemove + ';', ';' + UpperOld + ';');
+    if P = 0 then Break;
+    Changed := True;
+    if P = 1 then
+    begin
+      { RemovePath is at the start of OldPath.  Remove "RemovePath;" (Len + 1
+        chars).  If RemovePath is the only entry, Len + 1 > Length(OldPath), so
+        Pascal's Delete removes everything, leaving an empty string — which is
+        correct. }
+      Delete(OldPath, 1, Len + 1);
+    end
+    else
+    begin
+      { RemovePath is preceded by at least one other entry.  In the padded
+        string, position P is the ';' immediately before RemovePath.  That
+        semicolon lives at position P - 1 in the original OldPath (because the
+        padded string prepends one extra ';').  Remove ";RemovePath" = Len + 1
+        chars starting at that position. }
+      Delete(OldPath, P - 1, Len + 1);
+    end;
+  until False;
 
-  if P = 1 then
-  begin
-    { RemovePath is at the start of OldPath.  Remove "RemovePath;" (Len + 1
-      chars).  If RemovePath is the only entry, Len + 1 > Length(OldPath), so
-      Pascal's Delete removes everything, leaving an empty string — which is
-      correct. }
-    Delete(OldPath, 1, Len + 1);
-  end
-  else
-  begin
-    { RemovePath is preceded by at least one other entry.  In the padded
-      string, position P is the ';' immediately before RemovePath.  That
-      semicolon lives at position P - 1 in the original OldPath (because the
-      padded string prepends one extra ';').  Remove ";RemovePath" = Len + 1
-      chars starting at that position. }
-    Delete(OldPath, P - 1, Len + 1);
-  end;
-
-  RegWriteExpandStringValue(HKEY_CURRENT_USER, EnvironmentRegKey, 'Path', OldPath);
+  if Changed then
+    RegWriteExpandStringValue(HKEY_CURRENT_USER, EnvironmentRegKey, 'Path', OldPath);
 end;
 
 { Hook: add the install directory to user PATH after installation. }
