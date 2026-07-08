@@ -8,7 +8,9 @@ from unittest import mock
 
 # Provide a minimal winreg stub so the installer module can be imported on
 # platforms where winreg is not available (i.e., non-Windows test environments).
-if "winreg" not in sys.modules:
+try:
+    import winreg  # noqa: F401
+except ImportError:
     sys.modules["winreg"] = types.ModuleType("winreg")
 
 # Ensure packaging/ is on sys.path so the installer module can be imported,

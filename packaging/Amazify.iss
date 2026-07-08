@@ -85,10 +85,25 @@ begin
   if not RegQueryStringValue(HKEY_CURRENT_USER, EnvironmentRegKey, 'Path', ExistingPath) then
     ExistingPath := '';
   if ExistingPath <> '' then
-    ExistingPath := ExistingPath + ';' + InstallPath
+  begin
+    if ExistingPath[Length(ExistingPath)] <> ';' then
+      ExistingPath := ExistingPath + ';';
+    ExistingPath := ExistingPath + InstallPath;
+  end
   else
     ExistingPath := InstallPath;
   RegWriteExpandStringValue(HKEY_CURRENT_USER, EnvironmentRegKey, 'Path', ExistingPath);
+end;
+
+function NormalizePathSeparators(PathValue: string): string;
+begin
+  while Pos(';;', PathValue) > 0 do
+    StringChangeEx(PathValue, ';;', ';', True);
+  while (PathValue <> '') and (PathValue[1] = ';') do
+    Delete(PathValue, 1, 1);
+  while (PathValue <> '') and (PathValue[Length(PathValue)] = ';') do
+    Delete(PathValue, Length(PathValue), 1);
+  Result := PathValue;
 end;
 
 { Remove all occurrences of RemovePath from the user PATH (case-insensitive). }
@@ -131,7 +146,10 @@ begin
   until False;
 
   if Changed then
+  begin
+    OldPath := NormalizePathSeparators(OldPath);
     RegWriteExpandStringValue(HKEY_CURRENT_USER, EnvironmentRegKey, 'Path', OldPath);
+  end;
 end;
 
 { Hook: add the install directory to user PATH after installation. }
