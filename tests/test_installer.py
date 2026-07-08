@@ -10,7 +10,9 @@ from unittest import mock
 # platforms where winreg is not available (i.e., non-Windows test environments).
 try:
     import winreg  # noqa: F401
+    _installed_winreg_stub = False
 except ImportError:
+    _installed_winreg_stub = True
     sys.modules["winreg"] = types.ModuleType("winreg")
 
 # Ensure packaging/ is on sys.path so the installer module can be imported,
@@ -22,11 +24,13 @@ try:
     import amazify_installer  # noqa: E402
 finally:
     sys.path[:] = _saved_sys_path
+    if _installed_winreg_stub:
+        del sys.modules["winreg"]
 
 
 class InstallerWindowedDetectionTests(unittest.TestCase):
     def test_is_windowed_false_when_stdout_is_attached(self) -> None:
-        with mock.patch.object(sys, "stdout", new=sys.__stdout__):
+        with mock.patch.object(sys, "stdout", new=object()):
             self.assertFalse(amazify_installer._is_windowed())
 
     def test_is_windowed_true_when_stdout_is_none(self) -> None:

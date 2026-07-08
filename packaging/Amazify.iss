@@ -95,7 +95,7 @@ begin
   RegWriteExpandStringValue(HKEY_CURRENT_USER, EnvironmentRegKey, 'Path', ExistingPath);
 end;
 
-function NormalizePathSeparators(PathValue: string): string;
+function NormalizePathDelimiters(PathValue: string): string;
 begin
   while Pos(';;', PathValue) > 0 do
     StringChangeEx(PathValue, ';;', ';', True);
@@ -147,7 +147,7 @@ begin
 
   if Changed then
   begin
-    OldPath := NormalizePathSeparators(OldPath);
+    OldPath := NormalizePathDelimiters(OldPath);
     RegWriteExpandStringValue(HKEY_CURRENT_USER, EnvironmentRegKey, 'Path', OldPath);
   end;
 end;
