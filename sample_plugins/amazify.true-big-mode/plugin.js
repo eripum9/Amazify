@@ -16,8 +16,10 @@ const LETTER_CLASS = "amazify-true-big-mode-letter";
 const WORD_CLASS = "amazify-true-big-mode-word";
 const WORD_ACTIVE_CLASS = "amazify-true-big-mode-word-active";
 const LYRICS_SCROLLING_CLASS = "amazify-true-big-mode-lyrics-scrolling";
+const NO_LYRICS_CLASS = "amazify-true-big-mode-no-lyrics";
 const SPICY_LYRICS_API_URL = "https://api.spicylyrics.org";
 const SPICY_LYRICS_VERSION = "1.1";
+const NO_LYRICS_LAYOUT_DELAY_MS = 700;
 const LYRICS_MANUAL_SCROLL_WINDOW_MS = 1200;
 const LYRICS_SCROLLBAR_HIDE_DELAY_MS = 900;
 const SPOTIFY_TOKEN_STORAGE_KEY = "amazify.true-big-mode.spotifyAccessToken";
@@ -41,6 +43,8 @@ let spicyLyricsTrackKey = "";
 let spicyLyricsStatus = "idle";
 let spicyLyricsData = null;
 let lastTimedLyricLine = null;
+let missingLyricsTrackKey = "";
+let missingLyricsSince = 0;
 let syncTimer = null;
 let syncFrame = null;
 let intervalId = null;
@@ -1472,6 +1476,36 @@ function restoreLyricEnhancements() {
   lastActiveLyric = null;
 }
 
+function resetNoLyricsState(root = null) {
+  missingLyricsTrackKey = "";
+  missingLyricsSince = 0;
+  if (root) {
+    root.classList.remove(NO_LYRICS_CLASS);
+  } else {
+    document.querySelectorAll(`.${NO_LYRICS_CLASS}`).forEach((element) => {
+      element.classList.remove(NO_LYRICS_CLASS);
+    });
+  }
+}
+
+function syncNoLyricsState(root, hasLyrics) {
+  if (hasLyrics) {
+    resetNoLyricsState(root);
+    return;
+  }
+
+  const trackKey = getProgressTrackKey(root);
+  const now = window.performance.now();
+  if (trackKey !== missingLyricsTrackKey) {
+    missingLyricsTrackKey = trackKey;
+    missingLyricsSince = now;
+    root.classList.remove(NO_LYRICS_CLASS);
+    return;
+  }
+
+  root.classList.toggle(NO_LYRICS_CLASS, now - missingLyricsSince >= NO_LYRICS_LAYOUT_DELAY_MS);
+}
+
 function isLikelyLyricScroller(element) {
   if (!(element instanceof HTMLElement) || isInsideTrackChrome(element)) {
     return false;
@@ -1599,10 +1633,12 @@ function syncLyricScrollbars(root) {
 function enhanceLyrics(root) {
   const view = root.querySelector(VIEW_SELECTOR);
   if (!view) {
+    resetNoLyricsState(root);
     return;
   }
   fetchSpicyLyricsIfPossible(root);
   const lines = Array.from(view.querySelectorAll(".lyricsText, [class*='lyricsText']")).filter(isLikelyLyricLine);
+  syncNoLyricsState(root, lines.length > 0);
   const enhancedLines = Array.from(
     view.querySelectorAll(
       `.${LYRIC_LINE_CLASS}, .${LYRIC_ACTIVE_CLASS}, [data-amazify-lyric-text], [data-amazify-timed-lyric-key]`
@@ -1690,6 +1726,7 @@ function restorePolishedBigMode() {
   stableProgressTrackKey = "";
   stableProgressDuration = 0;
   previewProgressFraction = null;
+  resetNoLyricsState();
   spicyLyricsTrackKey = "";
   spicyLyricsStatus = "idle";
   spicyLyricsData = null;
