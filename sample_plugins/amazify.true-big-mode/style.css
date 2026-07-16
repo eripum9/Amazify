@@ -114,6 +114,7 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
   --amazify-true-big-mode-lyrics-width: clamp(580px, 46vw, 1180px);
   --amazify-true-big-mode-column-gap: clamp(48px, 5vw, 112px);
   --amazify-true-big-mode-no-lyrics-scale: 1.12;
+  --amazify-true-big-mode-no-lyrics-transition-ms: 2000ms;
   --amazify-true-big-mode-scrollbar-offset: clamp(28px, 1.8vw, 48px);
   --amazify-true-big-mode-accent: rgba(20, 180, 190, 0.86);
   background: #071012 !important;
@@ -221,8 +222,8 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
   transform: translate3d(0, 0, 0) scale(1) !important;
   transform-origin: center center !important;
   transition:
-    transform 720ms cubic-bezier(0.19, 1, 0.22, 1),
-    opacity 360ms ease !important;
+    transform var(--amazify-true-big-mode-no-lyrics-transition-ms) cubic-bezier(0.16, 1, 0.3, 1),
+    opacity var(--amazify-true-big-mode-no-lyrics-transition-ms) ease !important;
   will-change: transform !important;
 }
 
@@ -234,7 +235,9 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
   margin: 0 !important;
   border-radius: 8px !important;
   overflow: visible !important;
-  transition: filter 520ms ease, box-shadow 520ms ease !important;
+  transition:
+    filter var(--amazify-true-big-mode-no-lyrics-transition-ms) ease,
+    box-shadow var(--amazify-true-big-mode-no-lyrics-transition-ms) ease !important;
 }
 
 body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing [data-amazify-true-big-mode-exit-proxy="true"] {
@@ -655,12 +658,13 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
   [class*="LyricsUnavailable"]
 ) {
   opacity: 1 !important;
+  visibility: visible !important;
   transform: translate3d(0, 0, 0) scale(1) !important;
   filter: none !important;
   transition:
-    opacity 440ms ease,
-    transform 720ms cubic-bezier(0.19, 1, 0.22, 1),
-    filter 440ms ease,
+    opacity var(--amazify-true-big-mode-no-lyrics-transition-ms) ease,
+    transform var(--amazify-true-big-mode-no-lyrics-transition-ms) cubic-bezier(0.16, 1, 0.3, 1),
+    filter var(--amazify-true-big-mode-no-lyrics-transition-ms) ease,
     visibility 0s linear 0s !important;
   will-change: opacity, transform !important;
 }
@@ -697,10 +701,10 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
   filter: blur(6px) !important;
   pointer-events: none !important;
   transition:
-    opacity 300ms ease,
-    transform 620ms cubic-bezier(0.19, 1, 0.22, 1),
-    filter 300ms ease,
-    visibility 0s linear 320ms !important;
+    opacity var(--amazify-true-big-mode-no-lyrics-transition-ms) ease,
+    transform var(--amazify-true-big-mode-no-lyrics-transition-ms) cubic-bezier(0.16, 1, 0.3, 1),
+    filter var(--amazify-true-big-mode-no-lyrics-transition-ms) ease,
+    visibility 0s linear var(--amazify-true-big-mode-no-lyrics-transition-ms) !important;
 }
 
 @media (min-width: 2400px) {

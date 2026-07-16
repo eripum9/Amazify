@@ -20,6 +20,7 @@ const NO_LYRICS_CLASS = "amazify-true-big-mode-no-lyrics";
 const SPICY_LYRICS_API_URL = "https://api.spicylyrics.org";
 const SPICY_LYRICS_VERSION = "1.1";
 const NO_LYRICS_LAYOUT_DELAY_MS = 700;
+const NO_LYRICS_LAYOUT_TRANSITION_MS = 2000;
 const LYRICS_MANUAL_SCROLL_WINDOW_MS = 1200;
 const LYRICS_SCROLLBAR_HIDE_DELAY_MS = 900;
 const SPOTIFY_TOKEN_STORAGE_KEY = "amazify.true-big-mode.spotifyAccessToken";
@@ -230,8 +231,34 @@ function getProgressTrackKey(root) {
   const art = findAlbumArt(root);
   const artworkUrl = getArtworkUrl(root, art) || lastArtworkUrl;
   const track = root.querySelector(`${VIEW_SELECTOR} .track`);
-  const trackText = track ? elementText(track) : "";
+  const trackText = stableTrackTextForKey(track);
   return `${artworkUrl}|${trackText}`;
+}
+
+function stableTrackTextForKey(track) {
+  if (!track) {
+    return "";
+  }
+
+  const clone = track.cloneNode(true);
+  clone
+    .querySelectorAll(
+      [
+        `.${PROGRESS_CLASS}`,
+        `.${OVERLAY_CLASS}`,
+        ".amazify-true-big-mode-hover-controls",
+        "[data-amazify-control]",
+        "[data-amazify-plugin-id]",
+        "[aria-hidden='true']",
+      ].join(",")
+    )
+    .forEach((node) => node.remove());
+
+  return elementText(clone)
+    .replace(/(?:^|\s)-?\d{1,2}:\d{2}(?=\s|$)/g, " ")
+    .replace(/\b\d{1,3}%\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function stableDurationForTrack(root, measuredDuration) {
@@ -1499,7 +1526,6 @@ function syncNoLyricsState(root, hasLyrics) {
   if (trackKey !== missingLyricsTrackKey) {
     missingLyricsTrackKey = trackKey;
     missingLyricsSince = now;
-    root.classList.remove(NO_LYRICS_CLASS);
     return;
   }
 
@@ -1691,6 +1717,7 @@ function enhanceLyrics(root) {
 }
 
 function syncPolishedBigMode(root, art) {
+  root.style.setProperty("--amazify-true-big-mode-no-lyrics-transition-ms", `${NO_LYRICS_LAYOUT_TRANSITION_MS}ms`);
   ensureDynamicBackground(root, art);
   ensureProgress(root, art);
   syncProgress(root);
