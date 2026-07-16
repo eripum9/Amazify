@@ -8,7 +8,7 @@
       "manifest": {
         "id": "amazify.true-big-mode",
         "name": "True Big Mode",
-        "version": "0.1.4",
+        "version": "0.1.5",
         "author": "Amazify",
         "type": "ui",
         "description": "Turns Amazon Music Big Mode into a cleaner full-screen lyrics view with album-art exit behavior.",

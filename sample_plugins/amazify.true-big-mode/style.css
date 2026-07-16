@@ -115,6 +115,8 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
   --amazify-true-big-mode-column-gap: clamp(48px, 5vw, 112px);
   --amazify-true-big-mode-no-lyrics-scale: 1.12;
   --amazify-true-big-mode-no-lyrics-transition-ms: 2000ms;
+  --amazify-true-big-mode-no-lyrics-translate-x: 0px;
+  --amazify-true-big-mode-no-lyrics-translate-y: 0px;
   --amazify-true-big-mode-scrollbar-offset: clamp(28px, 1.8vw, 48px);
   --amazify-true-big-mode-accent: rgba(20, 180, 190, 0.86);
   background: #071012 !important;
@@ -671,7 +673,11 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
 
 body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing.amazify-true-big-mode-no-lyrics .nowPlayingView.x4 .track {
   transform:
-    translate3d(calc((var(--amazify-true-big-mode-lyrics-width) + var(--amazify-true-big-mode-column-gap)) / 2), 0, 0)
+    translate3d(
+      var(--amazify-true-big-mode-no-lyrics-translate-x),
+      var(--amazify-true-big-mode-no-lyrics-translate-y),
+      0
+    )
     scale(var(--amazify-true-big-mode-no-lyrics-scale)) !important;
 }
 

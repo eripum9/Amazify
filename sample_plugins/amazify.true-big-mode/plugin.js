@@ -20,6 +20,7 @@ const NO_LYRICS_CLASS = "amazify-true-big-mode-no-lyrics";
 const SPICY_LYRICS_API_URL = "https://api.spicylyrics.org";
 const SPICY_LYRICS_VERSION = "1.1";
 const NO_LYRICS_LAYOUT_DELAY_MS = 700;
+const LYRICS_LAYOUT_CONFIRM_MS = 700;
 const NO_LYRICS_LAYOUT_TRANSITION_MS = 2000;
 const LYRICS_MANUAL_SCROLL_WINDOW_MS = 1200;
 const LYRICS_SCROLLBAR_HIDE_DELAY_MS = 900;
@@ -46,6 +47,9 @@ let spicyLyricsData = null;
 let lastTimedLyricLine = null;
 let missingLyricsTrackKey = "";
 let missingLyricsSince = 0;
+let centeredNoLyricsTrackKey = "";
+let presentLyricsTrackKey = "";
+let presentLyricsSince = 0;
 let syncTimer = null;
 let syncFrame = null;
 let intervalId = null;
@@ -1506,30 +1510,113 @@ function restoreLyricEnhancements() {
 function resetNoLyricsState(root = null) {
   missingLyricsTrackKey = "";
   missingLyricsSince = 0;
+  centeredNoLyricsTrackKey = "";
+  presentLyricsTrackKey = "";
+  presentLyricsSince = 0;
   if (root) {
     root.classList.remove(NO_LYRICS_CLASS);
+    root.style.removeProperty("--amazify-true-big-mode-no-lyrics-translate-x");
+    root.style.removeProperty("--amazify-true-big-mode-no-lyrics-translate-y");
   } else {
     document.querySelectorAll(`.${NO_LYRICS_CLASS}`).forEach((element) => {
       element.classList.remove(NO_LYRICS_CLASS);
+      element.style.removeProperty("--amazify-true-big-mode-no-lyrics-translate-x");
+      element.style.removeProperty("--amazify-true-big-mode-no-lyrics-translate-y");
     });
   }
 }
 
-function syncNoLyricsState(root, hasLyrics) {
-  if (hasLyrics) {
-    resetNoLyricsState(root);
+function readPixelCustomProperty(element, name) {
+  const raw = window.getComputedStyle(element).getPropertyValue(name).trim();
+  const value = Number.parseFloat(raw);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function readTransformOffset(element) {
+  const transform = window.getComputedStyle(element).transform;
+  if (!transform || transform === "none") {
+    return { x: 0, y: 0 };
+  }
+  try {
+    const matrix = new DOMMatrixReadOnly(transform);
+    return { x: matrix.m41 || 0, y: matrix.m42 || 0 };
+  } catch (_error) {
+    return { x: 0, y: 0 };
+  }
+}
+
+function setNoLyricsCenterOffset(root) {
+  const track = root.querySelector(`${VIEW_SELECTOR} .track`);
+  if (!track) {
+    return;
+  }
+  const rect = track.getBoundingClientRect();
+  if (!rect.width || !rect.height) {
     return;
   }
 
+  const existingX = readPixelCustomProperty(root, "--amazify-true-big-mode-no-lyrics-translate-x");
+  const existingY = readPixelCustomProperty(root, "--amazify-true-big-mode-no-lyrics-translate-y");
+  const offset = root.classList.contains(NO_LYRICS_CLASS)
+    ? { x: existingX, y: existingY }
+    : readTransformOffset(track);
+  const untransformedCenterX = rect.left + rect.width / 2 - offset.x;
+  const untransformedCenterY = rect.top + rect.height / 2 - offset.y;
+  const targetX = window.innerWidth / 2 - untransformedCenterX;
+  const targetY = window.innerHeight / 2 - untransformedCenterY;
+  root.style.setProperty("--amazify-true-big-mode-no-lyrics-translate-x", `${targetX.toFixed(2)}px`);
+  root.style.setProperty("--amazify-true-big-mode-no-lyrics-translate-y", `${targetY.toFixed(2)}px`);
+}
+
+function activateNoLyricsState(root, trackKey) {
+  setNoLyricsCenterOffset(root);
+  centeredNoLyricsTrackKey = trackKey;
+  root.classList.add(NO_LYRICS_CLASS);
+}
+
+function syncNoLyricsState(root, hasLyrics) {
   const trackKey = getProgressTrackKey(root);
   const now = window.performance.now();
+
+  if (hasLyrics) {
+    missingLyricsTrackKey = "";
+    missingLyricsSince = 0;
+
+    if (!root.classList.contains(NO_LYRICS_CLASS)) {
+      presentLyricsTrackKey = trackKey;
+      presentLyricsSince = now;
+      return;
+    }
+
+    if (trackKey !== presentLyricsTrackKey) {
+      presentLyricsTrackKey = trackKey;
+      presentLyricsSince = now;
+      return;
+    }
+
+    if (now - presentLyricsSince >= LYRICS_LAYOUT_CONFIRM_MS) {
+      resetNoLyricsState(root);
+    }
+    return;
+  }
+
+  presentLyricsTrackKey = "";
+  presentLyricsSince = 0;
   if (trackKey !== missingLyricsTrackKey) {
     missingLyricsTrackKey = trackKey;
     missingLyricsSince = now;
+    if (root.classList.contains(NO_LYRICS_CLASS)) {
+      setNoLyricsCenterOffset(root);
+      centeredNoLyricsTrackKey = trackKey;
+    }
     return;
   }
 
-  root.classList.toggle(NO_LYRICS_CLASS, now - missingLyricsSince >= NO_LYRICS_LAYOUT_DELAY_MS);
+  if (now - missingLyricsSince >= NO_LYRICS_LAYOUT_DELAY_MS) {
+    if (!root.classList.contains(NO_LYRICS_CLASS) || centeredNoLyricsTrackKey !== trackKey) {
+      activateNoLyricsState(root, trackKey);
+    }
+  }
 }
 
 function isLikelyLyricScroller(element) {
