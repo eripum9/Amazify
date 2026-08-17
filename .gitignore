@@ -1,33 +1,30 @@
-# Dependencies
-node_modules/
-
-# Build output
-build/
-dist/
-out/
-release/
-coverage/
-
-# Local configuration
-.env
-.env.*
-!.env.example
-*.local
-
-# Tool caches
-.cache/
-.pytest_cache/
-*.egg-info/
 __pycache__/
 *.py[cod]
+*$py.class
 
-# Editors
-.idea/
+.venv/
+venv/
+env/
+ENV/
+
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+.mypy_cache/
+.ruff_cache/
+
 .vscode/
+.idea/
 
-# Logs
+IDEAS.md
+
+debug.log
 *.log
+aws_sdk_*.log
 
-# Operating systems
 .DS_Store
 Thumbs.db

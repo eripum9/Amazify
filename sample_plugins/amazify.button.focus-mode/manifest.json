@@ -1,0 +1,15 @@
+{
+  "id": "amazify.button.focus-mode",
+  "name": "Focus Mode",
+  "version": "0.1.0",
+  "author": "Amazify",
+  "type": "ui",
+  "description": "Adds a compact header button that dims surrounding chrome for a quieter listening view.",
+  "entry": "plugin.js",
+  "styles": ["style.css"],
+  "permissions": ["dom-style", "dom-write"],
+  "amazonMusic": {
+    "testedAppVersions": [],
+    "target": "desktop"
+  }
+}
