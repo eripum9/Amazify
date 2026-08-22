@@ -17,6 +17,7 @@ plugins without the required capability from gaining Amazify authority.
 - Ephemeral bridge tokens, native-binding nonces, and DevTools session details.
 - Installed plugin source, enabled state, catalog cache, settings, and logs.
 - The integrity and provenance of official catalog entries and candidate artifacts.
+- The integrity and provenance of application update metadata and installers.
 - The user's filesystem, startup configuration, shortcuts, and installed Amazify files.
 
 Amazon credentials, DRM keys, and subscription bypass are neither required nor
@@ -100,6 +101,18 @@ installer operates per-user, stops the daemon before replacing files, and smoke
 tests use a dedicated mode that avoids startup, PATH, shortcut, and daemon side
 effects.
 
+### Application Update Boundary
+
+The updater trusts only the exact public GitHub release API endpoint for this
+repository and only final `vmajor.minor.patch` releases. It accepts exactly one
+`AmazifySetup.exe` asset whose URL, size, and GitHub-provided SHA-256 digest are
+present and valid. Metadata is bounded and redirects are rejected. Installer
+downloads permit at most three HTTPS redirects to a small GitHub release-asset
+host allowlist, enforce the advertised size while streaming, stage atomically,
+and are verified again immediately before process launch. Download and install
+are separate from plugin updates. Installation requires explicit trusted user
+activation or command-line confirmation and is never silent.
+
 ### GitHub Actions Boundary
 
 Repository content, dependency metadata, and manual inputs are untrusted build
@@ -122,6 +135,8 @@ attested and uploaded to the workflow run; no release is created.
 | Changed plugin code inherits prior execution consent | Preserve enabled state only for an identical verified package identity; install every changed package disabled |
 | Plugin synthesizes privileged marketplace interactions | Require trusted user activation at every lifecycle handler |
 | Failed update destroys a working plugin | Unique staging path, verify before activation, locked atomic swap with backup and rollback |
+| Application update substitutes an installer | Exact final-release metadata, exact asset name and URL, bounded redirects, size enforcement, mandatory GitHub SHA-256 digest, atomic staging, pre-launch re-verification |
+| Plugin or website starts an application update | Native-binding-only app-update commands, hidden nonce, no plugin command exposure, trusted UI click, CLI confirmation |
 | Concurrent bridge requests corrupt plugin state | Synchronize catalog, install, and state operations; use atomic state files |
 | Workflow dependency or action substitution | Hash-locked Python environment, full action SHAs, Dependabot, pip-audit, CodeQL, dependency review |
 | Workflow input executes shell code | Put expression values in step `env`; validate format before use; never interpolate inputs into `run` blocks |
@@ -136,6 +151,7 @@ attested and uploaded to the workflow run; no release is created.
 - DevTools intentionally expands the local attack surface while Amazon Music is attached.
 - Catalog review, hashes, and provenance establish identity and integrity, not correctness.
 - Unsigned executables do not provide Authenticode publisher identity and may trigger SmartScreen.
+- The updater's release identity ultimately depends on the security of the official GitHub repository and maintainer account.
 - Amazon Music DOM and launch behavior are unsupported upstream interfaces and may break safely or unexpectedly.
 
 Sensitive findings should be reported as described in [`SECURITY.md`](../SECURITY.md).

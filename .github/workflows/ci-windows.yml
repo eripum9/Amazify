@@ -47,7 +47,7 @@ jobs:
         run: python -m ruff check amazify packaging tests --select E9,F63,F7,F82
 
       - name: Pyright stable core checks
-        run: python -m pyright amazify/bridge.py amazify/config.py amazify/devtools.py amazify/native_bridge.py amazify/shortcuts.py amazify/window_identity.py packaging/amazify_installer.py .github/scripts/validate_candidate.py tests/test_workflow_security.py
+        run: python -m pyright amazify/app_updater.py amazify/bridge.py amazify/config.py amazify/devtools.py amazify/native_bridge.py amazify/shortcuts.py amazify/window_identity.py packaging/amazify_installer.py .github/scripts/validate_candidate.py tests/test_app_updater.py tests/test_workflow_security.py
 
       - name: Whitespace
         run: git diff --check

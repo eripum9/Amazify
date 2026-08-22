@@ -4,7 +4,7 @@
 
 **Amazon Music runtime customization marketplace — inspired by [Spicetify](https://spicetify.app/).**
 
-Amazify is a Windows prototype that customizes the Amazon Music desktop app at runtime without modifying any packaged files on disk. A local Python companion launches or connects to Amazon Music, injects a reversible runtime via Chromium DevTools, and loads plugins from an in-app marketplace.
+Amazify is a Windows companion that customizes the Amazon Music desktop app at runtime without modifying any packaged files on disk. It launches or connects to Amazon Music, injects a reversible runtime via Chromium DevTools, and loads plugins from an in-app marketplace.
 
 [![Windows CI](https://github.com/eripum9/Amazify/actions/workflows/ci-windows.yml/badge.svg)](https://github.com/eripum9/Amazify/actions/workflows/ci-windows.yml)
 [![Security](https://github.com/eripum9/Amazify/actions/workflows/security.yml/badge.svg)](https://github.com/eripum9/Amazify/actions/workflows/security.yml)
@@ -22,6 +22,7 @@ Amazify is a Windows prototype that customizes the Amazon Music desktop app at r
 - **Stock plugins** — a curated set of tested layout and interface plugins
 - **Permissioned metadata** — each plugin declares permissions and receives only declared Amazify capabilities
 - **GUI installer** — Inno Setup 6 installer with optional desktop and taskbar shortcuts
+- **Application updater** — checks final GitHub releases and verifies the installer SHA-256 before launch
 
 ---
 
@@ -48,9 +49,9 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --no-build-isolation --no-deps -e .
 ```
 
-### Standalone installer (experimental)
+### Standalone installer
 
-The GUI installer is not yet published as a public release. Build it locally with the steps in the [Development](#development) section and run:
+Until the 1.0.0 release is published, build the installer locally with the steps in the [Development](#development) section and run:
 
 ```powershell
 .\dist\AmazifySetup.exe
@@ -89,6 +90,20 @@ amazify daemon start
 amazify daemon status
 amazify daemon stop
 ```
+
+Check or install a final Amazify application release:
+
+```powershell
+amazify --version
+amazify update check
+amazify update install
+```
+
+Application updates are never installed silently. Amazify requires an explicit
+confirmation, downloads only the official `AmazifySetup.exe` release asset,
+checks its GitHub-provided SHA-256 digest, and then opens the normal installer.
+See [application updates](docs/application-updates.md) for the accepted release
+contract and maintainer checklist.
 
 Connect to an already-running Amazon Music DevTools session:
 

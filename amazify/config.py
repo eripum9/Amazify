@@ -110,5 +110,9 @@ class RuntimeConfig:
         return self.state_dir / "welcome_state.json"
 
     @property
+    def update_dir(self) -> Path:
+        return self.state_dir / "updates"
+
+    @property
     def bridge_url(self) -> str:
         return f"http://{DEVTOOLS_HOST}:{self.bridge_port}"

@@ -69,7 +69,7 @@ class LocalBridge:
         bridge = self
 
         class Handler(BaseHTTPRequestHandler):
-            server_version = "AmazifyBridge/0.1"
+            server_version = "AmazifyBridge/1.0"
 
             def log_message(self, format: str, *args: object) -> None:
                 LOG.debug("Bridge: " + format, *args)

@@ -50,6 +50,7 @@ def build_runtime_script(
     catalog_plugins: list[dict[str, Any]] | None = None,
     native_session_nonce: str | None = None,
     native_response_callback: str | None = None,
+    app_update: dict[str, Any] | None = None,
 ) -> str:
     bridge_url_json = json.dumps(bridge_url)
     bridge_token_json = json.dumps(bridge_token)
@@ -57,6 +58,7 @@ def build_runtime_script(
     catalog_plugins_json = json.dumps(catalog_plugins or [])
     native_session_nonce_json = json.dumps(native_session_nonce or "")
     native_response_callback_json = json.dumps(native_response_callback or "")
+    app_update_json = json.dumps(app_update or {})
     version_json = json.dumps(__version__)
     logo_data_uri_json = json.dumps(_runtime_logo_data_uri())
     return f"""
@@ -72,6 +74,8 @@ def build_runtime_script(
     ? window.AmazifyNativeCommand.bind(window)
     : null;
   const NATIVE_CONFIRM = typeof window.confirm === "function" ? window.confirm.bind(window) : () => false;
+  const NATIVE_SET_TIMEOUT = window.setTimeout.bind(window);
+  const NATIVE_CLEAR_TIMEOUT = window.clearTimeout.bind(window);
   const NATIVE_DEFINE_PROPERTY = Object.defineProperty.bind(Object);
   const NATIVE_ASSIGN = Object.assign.bind(Object);
   const NATIVE_FREEZE = Object.freeze.bind(Object);
@@ -114,6 +118,7 @@ def build_runtime_script(
   const BRIDGE_TOKEN = {bridge_token_json};
   const INITIAL_PLUGINS = {plugins_json};
   const INITIAL_CATALOG_PLUGINS = {catalog_plugins_json};
+  const INITIAL_APP_UPDATE = {app_update_json};
   const NATIVE_SESSION_NONCE = {native_session_nonce_json};
   const NATIVE_RESPONSE_CALLBACK = {native_response_callback_json};
   const LOGO_DATA_URI = {logo_data_uri_json};
@@ -126,13 +131,15 @@ def build_runtime_script(
 
   function readRuntimePreferences() {{
     const defaults = {{
-      autoCheckUpdates: true
+      autoCheckUpdates: true,
+      autoCheckAppUpdates: true
     }};
     try {{
       const saved = NATIVE_JSON_PARSE(window.localStorage.getItem(SETTINGS_STORAGE_KEY) || "{{}}");
       if (!saved || typeof saved !== "object") return defaults;
       return {{
-        autoCheckUpdates: typeof saved.autoCheckUpdates === "boolean" ? saved.autoCheckUpdates : defaults.autoCheckUpdates
+        autoCheckUpdates: typeof saved.autoCheckUpdates === "boolean" ? saved.autoCheckUpdates : defaults.autoCheckUpdates,
+        autoCheckAppUpdates: typeof saved.autoCheckAppUpdates === "boolean" ? saved.autoCheckAppUpdates : defaults.autoCheckAppUpdates
       }};
     }} catch (_error) {{
       return defaults;
@@ -153,6 +160,8 @@ def build_runtime_script(
     catalogError: "",
     catalogUrl: "",
     catalogRefreshInFlight: false,
+    appUpdate: INITIAL_APP_UPDATE,
+    appUpdatePollTimer: null,
     bridgeStatus: "Connected",
     preferences: readRuntimePreferences()
   }};
@@ -834,7 +843,7 @@ def build_runtime_script(
     if (tab === "marketplace" && state.preferences.autoCheckUpdates) {{
       refreshCatalogFromBridge();
     }} else if (tab === "settings") {{
-      refreshFromBridge();
+      refreshSettingsPanel();
     }}
   }}
 
@@ -872,7 +881,7 @@ def build_runtime_script(
         if (state.activePanel === "marketplace" && state.preferences.autoCheckUpdates) {{
           refreshCatalogFromBridge();
         }} else if (state.activePanel === "settings") {{
-          refreshFromBridge();
+          refreshSettingsPanel();
         }}
       }});
     }});
@@ -887,6 +896,10 @@ def build_runtime_script(
     if (refreshStateButton) addTrustedLifecycleClick(refreshStateButton, refreshFromBridge);
     const refreshCatalogButton = panel.querySelector("[data-amazify-refresh-catalog]");
     if (refreshCatalogButton) addTrustedLifecycleClick(refreshCatalogButton, refreshCatalogFromBridge);
+    const checkAppUpdateButton = panel.querySelector("[data-amazify-check-app-update]");
+    if (checkAppUpdateButton) addTrustedLifecycleClick(checkAppUpdateButton, startApplicationUpdateCheck);
+    const installAppUpdateButton = panel.querySelector("[data-amazify-install-app-update]");
+    if (installAppUpdateButton) addTrustedLifecycleClick(installAppUpdateButton, installApplicationUpdate);
     const openMarketplaceButton = panel.querySelector("[data-amazify-open-marketplace]");
     if (openMarketplaceButton) openMarketplaceButton.addEventListener("click", () => openPanel("marketplace"));
     panel.querySelectorAll("[data-amazify-setting]").forEach((toggle) => {{
@@ -1002,6 +1015,34 @@ def build_runtime_script(
     const catalogCount = mapValuesSnapshot(state.catalogPlugins).length;
     const enabledCount = countMapValues(state.plugins, (plugin) => plugin.enabled);
     const updateCount = countMapValues(state.catalogPlugins, (plugin) => plugin.updateAvailable);
+    const appUpdate = state.appUpdate || {{}};
+    const appUpdateStatus = String(appUpdate.status || "idle");
+    const currentAppVersion = String(appUpdate.currentVersion || VERSION);
+    const latestAppVersion = String(appUpdate.latestVersion || "");
+    const appUpdateProgress = Math.min(100, Math.max(0, Number(appUpdate.progress || 0)));
+    let appUpdateDetail = "Not checked yet";
+    let appUpdateAction = '<button class="amazify-quiet" type="button" data-amazify-check-app-update>Check now</button>';
+    if (appUpdateStatus === "checking") {{
+      appUpdateDetail = "Checking the latest final GitHub release";
+      appUpdateAction = '<button class="amazify-quiet" type="button" disabled>Checking</button>';
+    }} else if (appUpdateStatus === "available") {{
+      appUpdateDetail = `Amazify v${{latestAppVersion}} is available`;
+      appUpdateAction = `<button class="amazify-primary" type="button" data-amazify-install-app-update>Install v${{esc(latestAppVersion)}}</button>`;
+    }} else if (appUpdateStatus === "up-to-date") {{
+      appUpdateDetail = `Amazify v${{currentAppVersion}} is up to date`;
+    }} else if (appUpdateStatus === "downloading") {{
+      appUpdateDetail = `Downloading and verifying installer - ${{appUpdateProgress}}%`;
+      appUpdateAction = `<button class="amazify-primary" type="button" disabled>${{appUpdateProgress}}%</button>`;
+    }} else if (appUpdateStatus === "launching") {{
+      appUpdateDetail = "Starting the verified installer";
+      appUpdateAction = '<button class="amazify-primary" type="button" disabled>Starting</button>';
+    }} else if (appUpdateStatus === "launched") {{
+      appUpdateDetail = "Installer launched - complete it to finish updating";
+      appUpdateAction = '<button class="amazify-primary" type="button" disabled>Launched</button>';
+    }} else if (appUpdateStatus === "error") {{
+      appUpdateDetail = String(appUpdate.error || "Update check failed");
+      appUpdateAction = '<button class="amazify-quiet" type="button" data-amazify-check-app-update>Try again</button>';
+    }}
     const catalogStatus = state.catalogError
       ? state.catalogError
       : `${{catalogCount}} ${{catalogCount === 1 ? "entry" : "entries"}} loaded`;
@@ -1010,6 +1051,16 @@ def build_runtime_script(
       <div class="amazify-setting-row">
         <div><strong>Check for plugin updates automatically</strong><span>Refresh the catalog whenever Marketplace opens</span></div>
         <button class="amazify-toggle" type="button" aria-label="Check for plugin updates automatically" aria-pressed="${{state.preferences.autoCheckUpdates ? "true" : "false"}}" data-amazify-setting="autoCheckUpdates"></button>
+      </div>
+      <div class="amazify-setting-row">
+        <div><strong>Check for Amazify updates automatically</strong><span>Check when Settings opens</span></div>
+        <button class="amazify-toggle" type="button" aria-label="Check for Amazify updates automatically" aria-pressed="${{state.preferences.autoCheckAppUpdates ? "true" : "false"}}" data-amazify-setting="autoCheckAppUpdates"></button>
+      </div>
+
+      <div class="amazify-section-title">Application updates</div>
+      <div class="amazify-setting-row">
+        <div><strong>Amazify v${{esc(currentAppVersion)}}</strong><span>${{esc(appUpdateDetail)}}</span></div>
+        ${{appUpdateAction}}
       </div>
 
       <div class="amazify-section-title">Plugin management</div>
@@ -1051,6 +1102,9 @@ def build_runtime_script(
       // The setting still applies for this session when storage is unavailable.
     }}
     renderPanel();
+    if (name === "autoCheckAppUpdates" && state.preferences.autoCheckAppUpdates) {{
+      startApplicationUpdateCheck();
+    }}
   }}
 
   class BridgeResponseError extends Error {{}}
@@ -1081,7 +1135,7 @@ def build_runtime_script(
         return;
       }}
       const id = `${{NATIVE_SESSION_NONCE}}.${{Date.now()}}.${{++state.nativeSequence}}`;
-      const timeout = setTimeout(() => {{
+      const timeout = NATIVE_SET_TIMEOUT(() => {{
         NATIVE_MAP_DELETE(state.nativeRequests, id);
         reject(new Error("Native bridge timed out"));
       }}, 5000);
@@ -1098,7 +1152,7 @@ def build_runtime_script(
   function receiveNativeResult(id, result) {{
     const request = NATIVE_MAP_GET(state.nativeRequests, id);
     if (!request) return false;
-    clearTimeout(request.timeout);
+    NATIVE_CLEAR_TIMEOUT(request.timeout);
     NATIVE_MAP_DELETE(state.nativeRequests, id);
     if (result && result.ok === false) {{
       request.reject(new Error(result.error || "Native bridge command failed"));
@@ -1148,6 +1202,95 @@ def build_runtime_script(
       const result = await nativeCommand(name, payload);
       state.bridgeStatus = "Connected through DevTools binding";
       return result;
+    }}
+  }}
+
+  function syncApplicationUpdate(update) {{
+    if (!update || typeof update !== "object") return;
+    state.appUpdate = NATIVE_ASSIGN({{}}, update);
+    if (state.activePanel === "settings") {{
+      renderPanel();
+    }}
+  }}
+
+  function appUpdateNeedsPolling() {{
+    const status = String((state.appUpdate && state.appUpdate.status) || "");
+    return status === "checking" || status === "downloading" || status === "launching";
+  }}
+
+  function scheduleApplicationUpdatePoll() {{
+    if (state.appUpdatePollTimer !== null) {{
+      NATIVE_CLEAR_TIMEOUT(state.appUpdatePollTimer);
+      state.appUpdatePollTimer = null;
+    }}
+    if (!runtimeActive || state.activePanel !== "settings" || !appUpdateNeedsPolling()) return;
+    state.appUpdatePollTimer = NATIVE_SET_TIMEOUT(() => {{
+      state.appUpdatePollTimer = null;
+      refreshApplicationUpdateStatus();
+    }}, 750);
+  }}
+
+  async function refreshApplicationUpdateStatus() {{
+    try {{
+      const result = await nativeCommand("app.update.status", {{}});
+      if (result && result.appUpdate) syncApplicationUpdate(result.appUpdate);
+    }} catch (error) {{
+      syncApplicationUpdate({{
+        ...(state.appUpdate || {{}}),
+        status: "error",
+        error: error.message || String(error)
+      }});
+    }} finally {{
+      scheduleApplicationUpdatePoll();
+    }}
+  }}
+
+  async function refreshSettingsPanel() {{
+    await refreshFromBridge();
+    if (!runtimeActive || state.activePanel !== "settings") return;
+    if (state.preferences.autoCheckAppUpdates) {{
+      await startApplicationUpdateCheck();
+    }} else {{
+      await refreshApplicationUpdateStatus();
+    }}
+  }}
+
+  async function startApplicationUpdateCheck() {{
+    try {{
+      const result = await nativeCommand("app.update.check", {{}});
+      if (result && result.appUpdate) syncApplicationUpdate(result.appUpdate);
+    }} catch (error) {{
+      syncApplicationUpdate({{
+        ...(state.appUpdate || {{}}),
+        status: "error",
+        error: error.message || String(error)
+      }});
+    }} finally {{
+      scheduleApplicationUpdatePoll();
+    }}
+  }}
+
+  async function installApplicationUpdate() {{
+    const update = state.appUpdate || {{}};
+    const latestVersion = String(update.latestVersion || "");
+    if (!update.updateAvailable || !latestVersion) return;
+    const confirmed = NATIVE_CONFIRM(
+      `Install Amazify v${{latestVersion}}?\n\n` +
+      "Amazify will download the official GitHub release installer, verify its SHA-256 digest, and open the installer. " +
+      "The background daemon will restart during installation."
+    );
+    if (!confirmed) return;
+    try {{
+      const result = await nativeCommand("app.update.install", {{}});
+      if (result && result.appUpdate) syncApplicationUpdate(result.appUpdate);
+    }} catch (error) {{
+      syncApplicationUpdate({{
+        ...(state.appUpdate || {{}}),
+        status: "error",
+        error: error.message || String(error)
+      }});
+    }} finally {{
+      scheduleApplicationUpdatePoll();
     }}
   }}
 
@@ -1467,7 +1610,13 @@ def build_runtime_script(
         pluginBridge.getState = () => bridgeCommand("state.get", {{}});
       }}
       if (NATIVE_SET_HAS(permissions, "bridge-command")) {{
-        pluginBridge.command = (name, payload = {{}}) => bridgeCommand(NATIVE_STRING(name || ""), payload);
+        pluginBridge.command = (name, payload = {{}}) => {{
+          const commandName = NATIVE_STRING(name || "");
+          if (commandName !== "catalog.refresh" && commandName !== "plugins.disableAll") {{
+            throw new Error("Plugin bridge command is not allowed");
+          }}
+          return bridgeCommand(commandName, payload);
+        }};
       }}
       api.bridge = NATIVE_FREEZE(pluginBridge);
     }}
@@ -1585,6 +1734,9 @@ def build_runtime_script(
   }}
 
   function syncStatePayload(data) {{
+    if (data && data.appUpdate) {{
+      syncApplicationUpdate(data.appUpdate);
+    }}
     if (typeof data.catalogUrl === "string") {{
       state.catalogUrl = data.catalogUrl;
     }}
@@ -1616,10 +1768,14 @@ def build_runtime_script(
       state.observer.disconnect();
       state.observer = null;
     }}
+    if (state.appUpdatePollTimer !== null) {{
+      NATIVE_CLEAR_TIMEOUT(state.appUpdatePollTimer);
+      state.appUpdatePollTimer = null;
+    }}
     const nativeRequests = mapValuesSnapshot(state.nativeRequests);
     for (let index = 0; index < nativeRequests.length; index += 1) {{
       const request = nativeRequests[index];
-      clearTimeout(request.timeout);
+      NATIVE_CLEAR_TIMEOUT(request.timeout);
       request.reject(new Error("Amazify runtime stopped"));
     }}
     NATIVE_MAP_CLEAR(state.nativeRequests);

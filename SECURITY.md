@@ -2,10 +2,9 @@
 
 ## Supported Versions
 
-Amazify is an early-stage project. Security fixes are made only on the latest
-commit of `main` and, after public releases begin, the latest published
-version. Older commits, locally modified builds, and third-party packages are
-not maintained by the Amazify project.
+Security fixes are made only on the latest commit of `main` and the latest
+published version. Older commits, locally modified builds, and third-party
+packages are not maintained by the Amazify project.
 
 Candidate artifacts produced by GitHub Actions are test artifacts, not public
 releases. They may be deleted or replaced and should not be redistributed as
@@ -72,6 +71,11 @@ Security-sensitive code and reviews should preserve these properties:
 - Browser bridge access is limited to exact supported Amazon Music origins.
 - Catalog and plugin downloads are bounded, use HTTPS, validate every redirect,
   pin a full Git commit, and verify the declared byte size and SHA-256 before use.
+- Application updates accept only the exact official latest final GitHub release,
+  require one exact installer asset with GitHub's SHA-256 digest, validate and
+  bound every redirect and byte, stage atomically, and reverify before launch.
+- Application installation is never silent and cannot be initiated through a
+  plugin bridge capability or the localhost HTTP bridge.
 - Plugin installation is staged and recoverable; failed updates must not remove
   the last working copy or silently enable a plugin. Plugin IDs must be
   canonical Windows-safe directory names, and every changed package identity

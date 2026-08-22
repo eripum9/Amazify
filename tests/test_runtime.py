@@ -52,10 +52,19 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("plugins.install", script)
         self.assertIn("data-amazify-install-plugin", script)
         self.assertIn("plugins.disableAll", script)
+        self.assertIn("app.update.status", script)
+        self.assertIn("app.update.check", script)
+        self.assertIn("app.update.install", script)
         self.assertIn("SETTINGS_STORAGE_KEY", script)
         self.assertIn('data-amazify-setting="autoCheckUpdates"', script)
+        self.assertIn('data-amazify-setting="autoCheckAppUpdates"', script)
         self.assertNotIn('data-amazify-setting="enableAfterDownload"', script)
         self.assertIn("data-amazify-refresh-catalog", script)
+        self.assertIn("data-amazify-check-app-update", script)
+        self.assertIn("data-amazify-install-app-update", script)
+        self.assertIn("async function refreshSettingsPanel()", script)
+        self.assertIn("await refreshFromBridge();", script)
+        self.assertIn("await startApplicationUpdateCheck();", script)
         self.assertIn("Available updates", script)
         self.assertIn("Catalog source", script)
         self.assertNotIn("amazify-safety-row", script)
@@ -69,6 +78,23 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("amazify-logo", script)
         self.assertIn("amazify-header-label", script)
         self.assertNotIn('class="amazify-mark">A', script)
+
+    def test_runtime_embeds_initial_application_update_state(self) -> None:
+        script = build_runtime_script(
+            bridge_url="http://127.0.0.1:12345",
+            bridge_token="token",
+            plugins=[],
+            app_update={
+                "currentVersion": "1.0.0",
+                "latestVersion": "1.1.0",
+                "status": "available",
+                "updateAvailable": True,
+            },
+        )
+
+        self.assertIn('const INITIAL_APP_UPDATE = {"currentVersion": "1.0.0"', script)
+        self.assertIn('"latestVersion": "1.1.0"', script)
+        self.assertIn("appUpdate: INITIAL_APP_UPDATE", script)
 
     def test_runtime_keeps_privileged_internals_out_of_global_api(self) -> None:
         script = build_runtime_script(
@@ -112,6 +138,8 @@ class RuntimeScriptTests(unittest.TestCase):
             "const NATIVE_JSON_STRINGIFY",
             "const NATIVE_DISPATCH_EVENT",
             "const NATIVE_EVENT",
+            "const NATIVE_SET_TIMEOUT",
+            "const NATIVE_CLEAR_TIMEOUT",
         ):
             self.assertLess(script.index(marker), cleanup_index)
         self.assertLess(cleanup_index, script.index(f'const BRIDGE_TOKEN = "{bridge_token}"'))
@@ -154,6 +182,10 @@ class RuntimeScriptTests(unittest.TestCase):
             "addTrustedLifecycleClick(disableAllButton, disableAllPlugins)", script
         )
         self.assertIn("addTrustedLifecycleClick(button, async () =>", script)
+        self.assertIn(
+            "addTrustedLifecycleClick(installAppUpdateButton, installApplicationUpdate)",
+            script,
+        )
         self.assertNotIn(
             'addEventListener("click", disableAllPlugins)',
             script,
@@ -170,6 +202,10 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("SHA-256", script)
         self.assertIn("will remain disabled", script)
         self.assertIn("NATIVE_JSON_STRINGIFY", script)
+        self.assertIn('commandName !== "catalog.refresh"', script)
+        self.assertIn('commandName !== "plugins.disableAll"', script)
+        self.assertIn("Plugin bridge command is not allowed", script)
+        self.assertIn("official GitHub release installer", script)
 
     def test_cleanup_script_removes_injected_markers(self) -> None:
         script = build_cleanup_script()

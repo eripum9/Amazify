@@ -7,6 +7,7 @@ import secrets
 import threading
 from typing import Any
 
+from .app_updater import ApplicationUpdater, UpdateError
 from .devtools import DevToolsClient, DevToolsError
 from .plugin_manager import PluginError, PluginManager
 
@@ -21,14 +22,23 @@ ALLOWED_COMMANDS = frozenset(
         "catalog.refresh",
         "plugins.install",
         "plugins.disableAll",
+        "app.update.status",
+        "app.update.check",
+        "app.update.install",
     }
 )
 
 
 class NativeBindingBridge:
-    def __init__(self, client: DevToolsClient, plugin_manager: PluginManager) -> None:
+    def __init__(
+        self,
+        client: DevToolsClient,
+        plugin_manager: PluginManager,
+        app_updater: ApplicationUpdater | None = None,
+    ) -> None:
         self.client = client
         self.plugin_manager = plugin_manager
+        self.app_updater = app_updater
         self._session_nonce = secrets.token_urlsafe(32)
         self._response_callback_name = f"__amazifyNativeResult_{secrets.token_hex(18)}"
         self._operation_lock = threading.RLock()
@@ -75,7 +85,7 @@ class NativeBindingBridge:
                 raise TypeError("Native command payload must be an object")
             with self._operation_lock:
                 result = self._handle_command(name, command_payload)
-        except (PluginError, TypeError, ValueError) as exc:
+        except (PluginError, UpdateError, TypeError, ValueError) as exc:
             LOG.warning("Rejected native binding command: %s", exc)
             result = {"ok": False, "error": str(exc)}
         except Exception:
@@ -103,6 +113,16 @@ class NativeBindingBridge:
         if name == "plugins.disableAll":
             self.plugin_manager.disable_all()
             return self._state_payload()
+        if name == "app.update.status":
+            return self._update_payload()
+        if name == "app.update.check":
+            if self.app_updater is None:
+                raise UpdateError("The Amazify application updater is unavailable")
+            return {"ok": True, "appUpdate": self.app_updater.start_check()}
+        if name == "app.update.install":
+            if self.app_updater is None:
+                raise UpdateError("The Amazify application updater is unavailable")
+            return {"ok": True, "appUpdate": self.app_updater.start_install()}
         raise PluginError(f"Native command not allowed: {name}")
 
     def _state_payload(self, *, force_catalog_refresh: bool = False) -> dict[str, Any]:
@@ -111,7 +131,7 @@ class NativeBindingBridge:
             if force_catalog_refresh
             else self.plugin_manager.cached_catalog_payload()
         )
-        return {
+        payload = {
             "ok": True,
             "plugins": self.plugin_manager.public_plugins(),
             "runtimePlugins": self.plugin_manager.runtime_snapshot(),
@@ -120,6 +140,14 @@ class NativeBindingBridge:
             "catalogUrl": catalog["url"],
             "bridge": {"type": "devtools-binding"},
         }
+        if self.app_updater is not None:
+            payload["appUpdate"] = self.app_updater.snapshot()
+        return payload
+
+    def _update_payload(self) -> dict[str, Any]:
+        if self.app_updater is None:
+            raise UpdateError("The Amazify application updater is unavailable")
+        return {"ok": True, "appUpdate": self.app_updater.snapshot()}
 
     def _reply(self, request_id: str, result: dict[str, Any]) -> None:
         expression = (

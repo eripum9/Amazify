@@ -8,6 +8,7 @@ set "DIST=%ROOT%\dist"
 set "BUILD=%ROOT%\build"
 set "SPEC=%BUILD%\spec"
 set "ICON=%ROOT%\packaging\assets\logo.ico"
+set "VERSION_INFO=%ROOT%\packaging\Amazify.version"
 set "RUNTIME_LOGO=%ROOT%\amazify\assets\logo.png"
 set "AMAZIFY_ENTRY=%ROOT%\packaging\amazify_cli.py"
 set "INNO_SCRIPT=%ROOT%\packaging\Amazify.iss"
@@ -39,8 +40,13 @@ if not exist "%RUNTIME_LOGO%" (
     popd
     exit /b 1
 )
+if not exist "%VERSION_INFO%" (
+    echo Expected version resource missing: %VERSION_INFO%
+    popd
+    exit /b 1
+)
 
-call :run "%PYTHON%" -m PyInstaller --noconfirm --clean --noupx --onefile --console --icon "%ICON%" --add-data "%RUNTIME_LOGO%;amazify\assets" --name amazify --distpath "%DIST%" --workpath "%BUILD%\amazify" --specpath "%SPEC%" "%AMAZIFY_ENTRY%"
+call :run "%PYTHON%" -m PyInstaller --noconfirm --clean --noupx --onefile --console --icon "%ICON%" --version-file "%VERSION_INFO%" --add-data "%RUNTIME_LOGO%;amazify\assets" --name amazify --distpath "%DIST%" --workpath "%BUILD%\amazify" --specpath "%SPEC%" "%AMAZIFY_ENTRY%"
 if errorlevel 1 goto :fail
 
 set "AMAZIFY_EXE=%DIST%\amazify.exe"
@@ -49,7 +55,7 @@ if not exist "%AMAZIFY_EXE%" (
     goto :fail
 )
 
-call :run "%PYTHON%" -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --icon "%ICON%" --add-data "%RUNTIME_LOGO%;amazify\assets" --name amazifyw --distpath "%DIST%" --workpath "%BUILD%\amazifyw" --specpath "%SPEC%" "%AMAZIFY_ENTRY%"
+call :run "%PYTHON%" -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --icon "%ICON%" --version-file "%VERSION_INFO%" --add-data "%RUNTIME_LOGO%;amazify\assets" --name amazifyw --distpath "%DIST%" --workpath "%BUILD%\amazifyw" --specpath "%SPEC%" "%AMAZIFY_ENTRY%"
 if errorlevel 1 goto :fail
 
 set "AMAZIFYW_EXE=%DIST%\amazifyw\amazifyw.exe"

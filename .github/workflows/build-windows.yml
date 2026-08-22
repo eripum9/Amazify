@@ -58,7 +58,7 @@ jobs:
         run: python -m ruff check amazify packaging tests .github/scripts --select E9,F63,F7,F82
 
       - name: Pyright stable core checks
-        run: python -m pyright amazify/bridge.py amazify/config.py amazify/devtools.py amazify/native_bridge.py amazify/shortcuts.py amazify/window_identity.py packaging/amazify_installer.py .github/scripts/validate_candidate.py tests/test_workflow_security.py
+        run: python -m pyright amazify/app_updater.py amazify/bridge.py amazify/config.py amazify/devtools.py amazify/native_bridge.py amazify/shortcuts.py amazify/window_identity.py packaging/amazify_installer.py .github/scripts/validate_candidate.py tests/test_app_updater.py tests/test_workflow_security.py
 
       - name: Audit runtime dependencies
         run: python -m pip_audit -r requirements.txt --strict
@@ -104,10 +104,21 @@ jobs:
 
       - name: Smoke packaged executables
         shell: pwsh
+        env:
+          AMAZIFY_CANDIDATE_VERSION: ${{ steps.source.outputs.version }}
         run: |
           & .\dist\amazify.exe --help | Out-Null
           if ($LASTEXITCODE -ne 0) {
             throw "amazify.exe --help failed with exit code $LASTEXITCODE."
+          }
+          $version = (& .\dist\amazify.exe --version).Trim()
+          $expectedVersion = "amazify $env:AMAZIFY_CANDIDATE_VERSION"
+          if ($LASTEXITCODE -ne 0 -or $version -ne $expectedVersion) {
+            throw "amazify.exe --version returned '$version' with exit code $LASTEXITCODE."
+          }
+          & .\dist\amazify.exe update --help | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            throw "amazify.exe update --help failed with exit code $LASTEXITCODE."
           }
           $windowed = Start-Process -FilePath '.\dist\amazifyw\amazifyw.exe' -ArgumentList '--help' -WindowStyle Hidden -Wait -PassThru
           if ($windowed.ExitCode -ne 0) {
@@ -116,6 +127,8 @@ jobs:
 
       - name: Silent isolated installer and uninstaller smoke
         shell: pwsh
+        env:
+          AMAZIFY_CANDIDATE_VERSION: ${{ steps.source.outputs.version }}
         run: |
           $installDir = Join-Path $env:RUNNER_TEMP ("Amazify-Candidate-" + [Guid]::NewGuid().ToString('N'))
           $arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CI-SMOKE=1 /DIR=`"$installDir`" /MERGETASKS=`"!startupdaemon,!desktopicon,!taskbaricon`""
@@ -128,6 +141,11 @@ jobs:
           & $installedCli --help | Out-Null
           if ($LASTEXITCODE -ne 0) {
             throw "Installed amazify.exe --help failed with exit code $LASTEXITCODE."
+          }
+          $installedVersion = (& $installedCli --version).Trim()
+          $expectedVersion = "amazify $env:AMAZIFY_CANDIDATE_VERSION"
+          if ($LASTEXITCODE -ne 0 -or $installedVersion -ne $expectedVersion) {
+            throw "Installed amazify.exe --version returned '$installedVersion' with exit code $LASTEXITCODE."
           }
           $uninstaller = Join-Path $installDir 'unins000.exe'
           if (-not (Test-Path -LiteralPath $uninstaller)) {

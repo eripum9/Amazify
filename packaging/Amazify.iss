@@ -1,5 +1,5 @@
 #define AppName "Amazify"
-#define AppVersion "0.1.1"
+#define AppVersion "1.0.0"
 #define AppPublisher "Amazify"
 #define AppExeName "amazify.exe"
 #define AppWindowedExeDir "amazifyw"
@@ -12,6 +12,11 @@ AppId={{74E5EBA7-A863-4C43-9D9F-DF1F8D31D9A3}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
+VersionInfoVersion={#AppVersion}.0
+VersionInfoProductVersion={#AppVersion}
+VersionInfoDescription=Amazify Setup
+VersionInfoCompany={#AppPublisher}
+VersionInfoProductName={#AppName}
 DefaultDirName={localappdata}\Programs\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes

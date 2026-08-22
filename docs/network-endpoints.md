@@ -8,6 +8,8 @@ their own network behavior, which is separate from the companion's requests.
 
 | Destination | Purpose | Authentication and validation | Limit |
 | --- | --- | --- | --- |
+| `https://api.github.com/repos/eripum9/Amazify/releases/latest` | Check the latest final Amazify application release | HTTPS, exact API URL, no redirects, bounded strict JSON, exact repository/tag/release/asset validation | 256 KiB response |
+| `https://github.com/eripum9/Amazify/releases/download/v<version>/AmazifySetup.exe` | Download a user-approved application update | HTTPS, exact repository/tag/asset path, at most three validated redirects to GitHub release-asset hosts, advertised size, mandatory GitHub SHA-256 digest | 256 MiB installer |
 | `https://raw.githubusercontent.com/eripum9/Amazify/main/plugin_catalog.json` | Fetch the official catalog update index when the store opens | HTTPS, exact host/repository/path, bounded response, schema validation | 1 MiB response |
 | `https://raw.githubusercontent.com/<owner>/<repo>/<40-char-commit>/<path>` | Fetch a catalog-pinned manifest, script, stylesheet, font, image, or other declared asset | HTTPS, catalog-approved repository and commit, normalized path, advertised byte size, SHA-256 | 2 MiB code/config file; 5 MiB declared asset |
 
@@ -20,6 +22,12 @@ The aggregate declared size of one plugin package may not exceed 20 MiB.
 The mutable `main` catalog is only an index used to discover new immutable
 package revisions. Executed plugin files are pinned to a full commit and are
 verified independently by size and SHA-256.
+
+Application updates are checked only against GitHub's latest final release.
+Drafts, prereleases, non-semantic tags, duplicate or missing installer assets,
+assets without GitHub's `sha256:` digest, and substituted repository URLs fail
+closed. A verified installer is staged under `%APPDATA%\Amazify\updates` and is
+rechecked immediately before launch. Amazify never installs it silently.
 
 Development source builds may use an explicitly enabled local `file://` catalog.
 Frozen production builds must not enable local catalogs from an environment
@@ -68,6 +76,11 @@ Credentials are compared without early-exit string comparison.
 It uses a separate random session nonce, a 16 KiB JSON message limit, and an
 explicit command allowlist. The binding is captured privately and removed from
 ambient plugin globals before plugins execute.
+
+Application update status, checks, and install starts are native-binding-only
+commands. They are not exposed by the localhost HTTP bridge or the plugin bridge
+capability. Installer launch additionally requires a trusted user click in the
+injected Settings interface.
 
 ## Plugin Network Activity
 

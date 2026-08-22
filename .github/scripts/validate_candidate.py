@@ -58,6 +58,10 @@ def main() -> int:
             ROOT / "packaging" / "amazify_installer.py",
             r'^APP_VERSION\s*=\s*"([^"]+)"',
         ),
+        "packaging/Amazify.version": matched_version(
+            ROOT / "packaging" / "Amazify.version",
+            r'StringStruct\("ProductVersion",\s*"([^"]+)"\)',
+        ),
     }
     mismatches = {
         name: version for name, version in versions.items() if version != expected

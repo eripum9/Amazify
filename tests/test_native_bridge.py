@@ -62,13 +62,40 @@ class StubPluginManager:
         self.disable_all_calls += 1
 
 
+class StubApplicationUpdater:
+    def __init__(self) -> None:
+        self.check_calls = 0
+        self.install_calls = 0
+        self.state: dict[str, Any] = {
+            "currentVersion": "1.0.0",
+            "latestVersion": "1.1.0",
+            "status": "available",
+            "updateAvailable": True,
+        }
+
+    def snapshot(self) -> dict[str, Any]:
+        return dict(self.state)
+
+    def start_check(self) -> dict[str, Any]:
+        self.check_calls += 1
+        self.state["status"] = "checking"
+        return self.snapshot()
+
+    def start_install(self) -> dict[str, Any]:
+        self.install_calls += 1
+        self.state["status"] = "downloading"
+        return self.snapshot()
+
+
 class NativeBindingBridgeTests(unittest.TestCase):
     def setUp(self) -> None:
         self.client = FakeDevToolsClient()
         self.manager = StubPluginManager()
+        self.updater = StubApplicationUpdater()
         self.bridge = NativeBindingBridge(
             self.client,  # type: ignore[arg-type]
             self.manager,  # type: ignore[arg-type]
+            self.updater,  # type: ignore[arg-type]
         )
 
     def send(
@@ -186,8 +213,22 @@ class NativeBindingBridgeTests(unittest.TestCase):
                 "catalog.refresh",
                 "plugins.install",
                 "plugins.disableAll",
+                "app.update.status",
+                "app.update.check",
+                "app.update.install",
             },
         )
+
+    def test_application_update_commands_use_dedicated_updater(self) -> None:
+        self.send("app.update.check", request_id="check")
+        self.send("app.update.status", request_id="status")
+        self.send("app.update.install", request_id="install")
+
+        self.assertEqual(self.updater.check_calls, 1)
+        self.assertEqual(self.updater.install_calls, 1)
+        self.assertEqual(len(self.client.expressions), 3)
+        self.assertIn("checking", self.client.expressions[0])
+        self.assertIn("downloading", self.client.expressions[2])
 
 
 if __name__ == "__main__":

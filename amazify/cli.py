@@ -14,6 +14,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import __version__
+from .app_updater import ApplicationUpdater, UpdateError
 from .bridge import LocalBridge
 from .config import RuntimeConfig, find_free_local_port
 from .devtools import (
@@ -79,15 +81,18 @@ def main(argv: list[str] | None = None) -> int:
         return status_daemon_command(args)
     if args.command == "shortcuts":
         return shortcuts_command(args)
+    if args.command == "update":
+        return update_command(args)
     return run(args)
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="amazify",
-        description="Amazify Amazon Music runtime customization prototype.",
+        description="Amazify Amazon Music runtime customization companion.",
     )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging.")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     subparsers = parser.add_subparsers(dest="command")
 
@@ -154,6 +159,30 @@ def build_parser() -> argparse.ArgumentParser:
     shortcuts_install.add_argument("--target-exe", default=None)
     shortcuts_subparsers.add_parser("remove", help="Remove shortcuts.")
 
+    update_parser = subparsers.add_parser(
+        "update",
+        help="Check for or install an Amazify application update.",
+    )
+    update_subparsers = update_parser.add_subparsers(dest="update_action")
+    update_check = update_subparsers.add_parser(
+        "check",
+        help="Check the latest final GitHub release.",
+    )
+    update_check.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable update status.",
+    )
+    update_install = update_subparsers.add_parser(
+        "install",
+        help="Download, verify, and launch the latest installer.",
+    )
+    update_install.add_argument(
+        "--yes",
+        action="store_true",
+        help="Install without the interactive command-line confirmation.",
+    )
+
     return parser
 
 
@@ -194,6 +223,10 @@ def create_plugin_manager(config: RuntimeConfig) -> PluginManager:
     )
 
 
+def create_application_updater(config: RuntimeConfig) -> ApplicationUpdater:
+    return ApplicationUpdater(config.update_dir, current_version=__version__)
+
+
 def run(args: argparse.Namespace) -> int:
     config = RuntimeConfig.create(
         devtools_port=getattr(args, "devtools_port", None),
@@ -222,6 +255,7 @@ def run_foreground(
     LOG.info("Amazify %sstarting. Logs: %s", "daemon " if daemon_mode else "", log_file)
 
     plugin_manager = create_plugin_manager(config)
+    app_updater = create_application_updater(config)
 
     bridge = LocalBridge(
         port=config.bridge_port,
@@ -256,7 +290,12 @@ def run_foreground(
             connect_only=getattr(args, "connect_only", False),
             prefer_known_ports=not explicit_devtools_port,
         )
-        client = inject_connection(config, plugin_manager, connection)
+        client = inject_connection(
+            config,
+            plugin_manager,
+            connection,
+            app_updater=app_updater,
+        )
         mark_daemon_state(
             config,
             status="connected" if daemon_mode else "foreground",
@@ -338,11 +377,15 @@ def inject_connection(
     config: RuntimeConfig,
     plugin_manager: PluginManager,
     connection: ConnectedTarget,
+    *,
+    app_updater: ApplicationUpdater | None = None,
 ) -> DevToolsClient:
+    if app_updater is None:
+        app_updater = create_application_updater(config)
     client = DevToolsClient(connection.target)
     try:
         client.connect()
-        native_bridge = NativeBindingBridge(client, plugin_manager)
+        native_bridge = NativeBindingBridge(client, plugin_manager, app_updater)
         native_bridge.install()
         probe = client.probe_amazon_music()
         remember_devtools_port(config)
@@ -375,6 +418,7 @@ def inject_connection(
                 catalog_plugins=plugin_manager.cached_catalog_payload()["plugins"],
                 native_session_nonce=native_bridge.session_nonce,
                 native_response_callback=native_bridge.response_callback_name,
+                app_update=app_updater.snapshot(),
             )
         )
         LOG.info("Injected Amazify runtime: %s", result)
@@ -536,6 +580,7 @@ def run_daemon(args: argparse.Namespace) -> int:
     remove_daemon_stop_file(config)
     remove_daemon_launch_file(config)
     plugin_manager = create_plugin_manager(config)
+    app_updater = create_application_updater(config)
     bridge = LocalBridge(
         port=config.bridge_port,
         token=config.bridge_token,
@@ -658,7 +703,12 @@ def run_daemon(args: argparse.Namespace) -> int:
                         )
 
                 if connection is not None:
-                    client = inject_connection(config, plugin_manager, connection)
+                    client = inject_connection(
+                        config,
+                        plugin_manager,
+                        connection,
+                        app_updater=app_updater,
+                    )
                     mark_daemon_state(
                         config,
                         status="connected",
@@ -1105,6 +1155,59 @@ def shortcuts_command(args: argparse.Namespace) -> int:
         return 0
     emit("Choose a shortcuts command: install or remove.", file=sys.stderr)
     return 2
+
+
+def update_command(args: argparse.Namespace) -> int:
+    action = getattr(args, "update_action", None)
+    if action not in {"check", "install"}:
+        emit("Choose an update command: check or install.", file=sys.stderr)
+        return 2
+
+    config = RuntimeConfig.create()
+    updater = create_application_updater(config)
+    try:
+        status = updater.check_now()
+    except UpdateError as exc:
+        emit(f"Amazify update check failed: {exc}", file=sys.stderr)
+        return 1
+
+    if action == "check":
+        if bool(getattr(args, "json", False)):
+            emit(json.dumps(status, sort_keys=True))
+        elif status["updateAvailable"]:
+            emit(
+                f"Amazify {status['latestVersion']} is available "
+                f"(installed: {status['currentVersion']})."
+            )
+            emit(f"Release: {status['releaseUrl']}")
+        else:
+            emit(f"Amazify {status['currentVersion']} is up to date.")
+        return 0
+
+    if not status["updateAvailable"]:
+        emit(f"Amazify {status['currentVersion']} is already up to date.")
+        return 0
+    if not bool(getattr(args, "yes", False)):
+        try:
+            answer = input(
+                f"Download and launch the verified Amazify "
+                f"{status['latestVersion']} installer? [y/N] "
+            )
+        except (EOFError, OSError):
+            answer = ""
+        if answer.strip().lower() not in {"y", "yes"}:
+            emit("Amazify update cancelled.")
+            return 0
+    try:
+        updater.install_now()
+    except UpdateError as exc:
+        emit(f"Amazify update failed: {exc}", file=sys.stderr)
+        return 1
+    emit(
+        f"Verified Amazify {status['latestVersion']} installer launched. "
+        "Complete the installer to finish updating."
+    )
+    return 0
 
 
 def emit(message: str = "", *, file: object | None = None) -> None:

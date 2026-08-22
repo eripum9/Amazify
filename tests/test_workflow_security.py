@@ -174,6 +174,15 @@ class WorkflowSecurityContractTests(unittest.TestCase):
         for command in pyinstaller_commands:
             self.assertIn("--noupx", command)
 
+    def test_packaged_executables_embed_version_metadata(self) -> None:
+        build_script = BUILD_SCRIPT.read_text(encoding="utf-8")
+        pyinstaller_commands = [
+            line for line in build_script.splitlines() if "-m PyInstaller" in line
+        ]
+        self.assertEqual(len(pyinstaller_commands), 2)
+        for command in pyinstaller_commands:
+            self.assertIn('--version-file "%VERSION_INFO%"', command)
+
 
 if __name__ == "__main__":
     unittest.main()

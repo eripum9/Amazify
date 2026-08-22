@@ -21,6 +21,7 @@ from amazify.cli import (
     request_daemon_launch,
     run,
     show_first_run_welcome,
+    update_command,
 )
 from amazify.config import RuntimeConfig
 from amazify.devtools import DevToolsError
@@ -139,6 +140,47 @@ class CliDevToolsPortTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         run_command.assert_called_once()
+
+    def test_main_dispatches_application_update_command(self) -> None:
+        with mock.patch("amazify.cli.update_command", return_value=0) as command:
+            exit_code = main(["update", "check"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(command.call_args.args[0].update_action, "check")
+
+    def test_version_flag_reports_release_version(self) -> None:
+        output = io.StringIO()
+        with redirect_stdout(output), self.assertRaises(SystemExit) as raised:
+            main(["--version"])
+
+        self.assertEqual(raised.exception.code, 0)
+        self.assertEqual(output.getvalue().strip(), "amazify 1.0.0")
+
+    def test_update_install_requires_available_verified_release(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            config = make_config(Path(temp))
+            updater = mock.Mock()
+            updater.check_now.return_value = {
+                "currentVersion": "1.0.0",
+                "latestVersion": "1.1.0",
+                "updateAvailable": True,
+                "releaseUrl": "https://github.com/eripum9/Amazify/releases/tag/v1.1.0",
+            }
+            args = mock.Mock(update_action="install", yes=True, json=False)
+            output = io.StringIO()
+            with (
+                mock.patch("amazify.cli.RuntimeConfig.create", return_value=config),
+                mock.patch(
+                    "amazify.cli.create_application_updater", return_value=updater
+                ),
+                redirect_stdout(output),
+            ):
+                exit_code = update_command(args)
+
+        self.assertEqual(exit_code, 0)
+        updater.check_now.assert_called_once_with()
+        updater.install_now.assert_called_once_with()
+        self.assertIn("Verified Amazify 1.1.0 installer launched", output.getvalue())
 
     def test_run_starts_daemon_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
