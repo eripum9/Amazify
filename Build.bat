@@ -40,7 +40,7 @@ if not exist "%RUNTIME_LOGO%" (
     exit /b 1
 )
 
-call :run "%PYTHON%" -m PyInstaller --noconfirm --clean --onefile --console --icon "%ICON%" --add-data "%RUNTIME_LOGO%;amazify\assets" --name amazify --distpath "%DIST%" --workpath "%BUILD%\amazify" --specpath "%SPEC%" "%AMAZIFY_ENTRY%"
+call :run "%PYTHON%" -m PyInstaller --noconfirm --clean --noupx --onefile --console --icon "%ICON%" --add-data "%RUNTIME_LOGO%;amazify\assets" --name amazify --distpath "%DIST%" --workpath "%BUILD%\amazify" --specpath "%SPEC%" "%AMAZIFY_ENTRY%"
 if errorlevel 1 goto :fail
 
 set "AMAZIFY_EXE=%DIST%\amazify.exe"
@@ -49,7 +49,7 @@ if not exist "%AMAZIFY_EXE%" (
     goto :fail
 )
 
-call :run "%PYTHON%" -m PyInstaller --noconfirm --clean --onedir --windowed --icon "%ICON%" --add-data "%RUNTIME_LOGO%;amazify\assets" --name amazifyw --distpath "%DIST%" --workpath "%BUILD%\amazifyw" --specpath "%SPEC%" "%AMAZIFY_ENTRY%"
+call :run "%PYTHON%" -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --icon "%ICON%" --add-data "%RUNTIME_LOGO%;amazify\assets" --name amazifyw --distpath "%DIST%" --workpath "%BUILD%\amazifyw" --specpath "%SPEC%" "%AMAZIFY_ENTRY%"
 if errorlevel 1 goto :fail
 
 set "AMAZIFYW_EXE=%DIST%\amazifyw\amazifyw.exe"

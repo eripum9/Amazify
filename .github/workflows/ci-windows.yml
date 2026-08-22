@@ -2,34 +2,51 @@ name: Windows CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     name: Test on Windows
-    runs-on: windows-latest
-
+    runs-on: windows-2025
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
-          python-version: "3.12"
+          python-version: "3.12.10"
+          cache: pip
+          cache-dependency-path: requirements-dev.lock
 
-      - name: Cache pip dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~\AppData\Local\pip\Cache
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt', 'pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+      - name: Install hash-locked dependencies
+        run: python -m pip install --require-hashes --only-binary=:all: -r requirements-dev.lock
 
-      - name: Install dependencies
-        run: python -m pip install --upgrade pip -e .
+      - name: Compile Python sources
+        run: python -m compileall -q amazify packaging tests
 
-      - name: Run tests
-        run: python -m unittest discover -s tests -v
+      - name: Run tests with coverage
+        run: python -m pytest tests --cov=amazify --cov-report=term-missing --cov-fail-under=45
+
+      - name: Ruff safety checks
+        run: python -m ruff check amazify packaging tests --select E9,F63,F7,F82
+
+      - name: Pyright stable core checks
+        run: python -m pyright amazify/bridge.py amazify/config.py amazify/devtools.py amazify/native_bridge.py amazify/shortcuts.py amazify/window_identity.py packaging/amazify_installer.py .github/scripts/validate_candidate.py tests/test_workflow_security.py
+
+      - name: Whitespace
+        run: git diff --check

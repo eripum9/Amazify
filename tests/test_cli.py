@@ -8,11 +8,14 @@ from pathlib import Path
 from unittest import mock
 
 from amazify.cli import (
+    ConnectedTarget,
     connect_or_launch,
     connect_or_launch_result,
-    daemon_spawn_command,
-    main,
     consume_daemon_launch_request,
+    create_plugin_manager,
+    daemon_spawn_command,
+    inject_connection,
+    main,
     recent_devtools_ports,
     remember_devtools_port,
     request_daemon_launch,
@@ -22,6 +25,7 @@ from amazify.cli import (
 from amazify.config import RuntimeConfig
 from amazify.devtools import DevToolsError
 from amazify.launcher import LaunchCandidate
+from amazify.plugin_manager import PluginError
 
 
 def make_config(root: Path, devtools_port: int = 4444) -> RuntimeConfig:
@@ -38,6 +42,85 @@ def make_config(root: Path, devtools_port: int = 4444) -> RuntimeConfig:
 
 
 class CliDevToolsPortTests(unittest.TestCase):
+    def test_injection_uses_one_runtime_evaluation_with_inline_cleanup(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            config = make_config(Path(temp))
+            client = mock.Mock()
+            client.probe_amazon_music.return_value = {
+                "title": "Amazon Music",
+                "href": "https://music.amazon.com/",
+            }
+            client.evaluate.return_value = {"ok": True}
+            native_bridge = mock.Mock()
+            native_bridge.session_nonce = "native-session"
+            native_bridge.response_callback_name = (
+                "__amazifyNativeResult_" + "c" * 36
+            )
+            plugin_manager = mock.Mock()
+            plugin_manager.runtime_snapshot.return_value = []
+            plugin_manager.cached_catalog_payload.return_value = {"plugins": []}
+
+            with (
+                mock.patch("amazify.cli.DevToolsClient", return_value=client),
+                mock.patch(
+                    "amazify.cli.NativeBindingBridge", return_value=native_bridge
+                ),
+                mock.patch("amazify.cli.remember_devtools_port"),
+                mock.patch("amazify.cli.build_cleanup_script") as cleanup_builder,
+            ):
+                result = inject_connection(
+                    config,
+                    plugin_manager,
+                    ConnectedTarget(target=object(), launched_by_amazify=False),
+                )
+
+            self.assertIs(result, client)
+            native_bridge.install.assert_called_once_with()
+            cleanup_builder.assert_not_called()
+            client.evaluate.assert_called_once()
+            script = client.evaluate.call_args.args[0]
+            cleanup_index = script.index("NATIVE_DISPATCH_EVENT(window")
+            self.assertLess(script.index("const NATIVE_JSON_STRINGIFY"), cleanup_index)
+            self.assertLess(cleanup_index, script.index("const BRIDGE_TOKEN"))
+
+    def test_local_catalog_requires_source_build_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            config = make_config(Path(temp))
+            catalog = Path(temp) / "catalog.json"
+            catalog.write_text('{"schemaVersion": 2, "plugins": []}', encoding="utf-8")
+            with (
+                mock.patch.dict(
+                    "os.environ",
+                    {
+                        "AMAZIFY_PLUGIN_CATALOG_URL": catalog.resolve().as_uri(),
+                        "AMAZIFY_ALLOW_LOCAL_CATALOG": "1",
+                    },
+                    clear=False,
+                ),
+                mock.patch("amazify.cli.sys.frozen", False, create=True),
+            ):
+                manager = create_plugin_manager(config)
+            self.assertEqual(manager.catalog_plugins(), [])
+
+    def test_frozen_build_ignores_local_catalog_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            config = make_config(Path(temp))
+            catalog = Path(temp) / "catalog.json"
+            catalog.write_text('{"schemaVersion": 2, "plugins": []}', encoding="utf-8")
+            with (
+                mock.patch.dict(
+                    "os.environ",
+                    {
+                        "AMAZIFY_PLUGIN_CATALOG_URL": catalog.resolve().as_uri(),
+                        "AMAZIFY_ALLOW_LOCAL_CATALOG": "1",
+                    },
+                    clear=False,
+                ),
+                mock.patch("amazify.cli.sys.frozen", True, create=True),
+                self.assertRaisesRegex(PluginError, "allow_local_catalog=True"),
+            ):
+                create_plugin_manager(config)
+
     def test_main_without_subcommand_prints_commands_without_running(self) -> None:
         output = io.StringIO()
 
@@ -77,7 +160,9 @@ class CliDevToolsPortTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             welcome.assert_called_once_with(config)
-            start_daemon.assert_called_once_with(args, config=config, request_launch=True)
+            start_daemon.assert_called_once_with(
+                args, config=config, request_launch=True
+            )
 
     def test_run_once_uses_foreground_mode(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -93,12 +178,16 @@ class CliDevToolsPortTests(unittest.TestCase):
             with (
                 mock.patch("amazify.cli.RuntimeConfig.create", return_value=config),
                 mock.patch("amazify.cli.show_first_run_welcome"),
-                mock.patch("amazify.cli.run_foreground", return_value=0) as run_foreground,
+                mock.patch(
+                    "amazify.cli.run_foreground", return_value=0
+                ) as run_foreground,
             ):
                 exit_code = run(args)
 
             self.assertEqual(exit_code, 0)
-            run_foreground.assert_called_once_with(args, config=config, daemon_mode=False)
+            run_foreground.assert_called_once_with(
+                args, config=config, daemon_mode=False
+            )
 
     def test_remember_devtools_port_writes_reusable_state(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -212,7 +301,9 @@ class CliDevToolsPortTests(unittest.TestCase):
     def test_recent_devtools_ports_prefers_state_then_recent_log_entries(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             config = make_config(Path(temp))
-            config.devtools_state_file.write_text('{"last_port": 51172}', encoding="utf-8")
+            config.devtools_state_file.write_text(
+                '{"last_port": 51172}', encoding="utf-8"
+            )
             (config.log_dir / "amazify.log").write_text(
                 "\n".join(
                     [
@@ -229,14 +320,18 @@ class CliDevToolsPortTests(unittest.TestCase):
     def test_connect_or_launch_reuses_known_port_before_launching(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             config = make_config(Path(temp), devtools_port=51394)
-            config.devtools_state_file.write_text('{"last_port": 51172}', encoding="utf-8")
+            config.devtools_state_file.write_text(
+                '{"last_port": 51172}', encoding="utf-8"
+            )
             target = object()
 
             class FakeDevToolsHttp:
                 def __init__(self, port: int) -> None:
                     self.port = port
 
-                def wait_for_amazon_music_target(self, timeout_seconds: float) -> object:
+                def wait_for_amazon_music_target(
+                    self, timeout_seconds: float
+                ) -> object:
                     if self.port == 51172:
                         return target
                     raise DevToolsError("missing")
@@ -264,13 +359,19 @@ class CliDevToolsPortTests(unittest.TestCase):
                 def __init__(self, port: int) -> None:
                     self.port = port
 
-                def wait_for_amazon_music_target(self, timeout_seconds: float) -> object:
+                def wait_for_amazon_music_target(
+                    self, timeout_seconds: float
+                ) -> object:
                     return target
 
-            candidates = [LaunchCandidate("aumid", "AmazonMusic_app!App", "Amazon Music")]
+            candidates = [
+                LaunchCandidate("aumid", "AmazonMusic_app!App", "Amazon Music")
+            ]
             with (
                 mock.patch("amazify.cli.DevToolsHttp", FakeDevToolsHttp),
-                mock.patch("amazify.cli.runtime_launch_candidates", return_value=candidates),
+                mock.patch(
+                    "amazify.cli.runtime_launch_candidates", return_value=candidates
+                ),
                 mock.patch("amazify.cli.amazon_music_is_running", return_value=False),
                 mock.patch("amazify.cli.launch_candidate") as launch_candidate,
             ):

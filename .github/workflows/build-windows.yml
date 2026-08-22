@@ -1,32 +1,256 @@
-name: Build Windows Installer
+name: Build Windows Candidate
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Semantic version without a v prefix
+        required: true
+        type: string
+
+concurrency:
+  group: windows-candidate
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
 
 jobs:
-  build:
-    runs-on: windows-latest
-
+  build-candidate:
+    name: Build non-publishing candidate
+    runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          python-version: "3.12"
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Install build dependencies
-        run: python -m pip install --upgrade pip ".[build]"
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12.10"
+          cache: pip
+          cache-dependency-path: requirements-build.lock
 
-      - name: Run tests
-        run: python -m unittest discover -s tests -v
+      - name: Validate current main source and version
+        id: source
+        shell: pwsh
+        env:
+          AMAZIFY_CANDIDATE_REF: ${{ github.ref }}
+          AMAZIFY_CANDIDATE_VERSION: ${{ inputs.version }}
+        run: |
+          git fetch origin main --no-tags
+          python .github/scripts/validate_candidate.py
 
-      - name: Build installer
+      - name: Install hash-locked build environment
+        run: python -m pip install --require-hashes --only-binary=:all: -r requirements-build.lock
+
+      - name: Compile Python sources
+        run: python -m compileall -q amazify packaging tests .github/scripts
+
+      - name: Run tests with coverage
+        run: python -m pytest tests --cov=amazify --cov-report=term-missing --cov-fail-under=45
+
+      - name: Ruff safety checks
+        run: python -m ruff check amazify packaging tests .github/scripts --select E9,F63,F7,F82
+
+      - name: Pyright stable core checks
+        run: python -m pyright amazify/bridge.py amazify/config.py amazify/devtools.py amazify/native_bridge.py amazify/shortcuts.py amazify/window_identity.py packaging/amazify_installer.py .github/scripts/validate_candidate.py tests/test_workflow_security.py
+
+      - name: Audit runtime dependencies
+        run: python -m pip_audit -r requirements.txt --strict
+
+      - name: Audit build dependencies
+        run: python -m pip_audit -r requirements-build.lock --strict
+
+      - name: Whitespace
+        run: git diff --check
+
+      - name: Install exact Inno Setup
+        shell: pwsh
+        run: |
+          winget install --id JRSoftware.InnoSetup --version 6.7.3 --exact --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+          $compilerPaths = @(
+            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+            "${env:LOCALAPPDATA}\Programs\Inno Setup 6\ISCC.exe"
+          )
+          $compiler = $compilerPaths | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+          if (-not $compiler) {
+            throw 'Inno Setup 6.7.3 compiler was not found after installation.'
+          }
+          $uninstallKeys = @(
+            'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1'
+            'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1'
+            'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1'
+          )
+          $innoVersion = $uninstallKeys |
+            Where-Object { Test-Path -LiteralPath $_ } |
+            ForEach-Object { (Get-ItemProperty -LiteralPath $_).DisplayVersion } |
+            Where-Object { $_ } |
+            Select-Object -First 1
+          if ($innoVersion -ne '6.7.3') {
+            throw "Expected Inno Setup 6.7.3, found $innoVersion."
+          }
+          "INNO_COMPILER=$compiler" >> $env:GITHUB_ENV
+          "INNO_VERSION=$innoVersion" >> $env:GITHUB_ENV
+
+      - name: Build executables and installer
+        shell: pwsh
         run: .\Build.bat
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Smoke packaged executables
+        shell: pwsh
+        run: |
+          & .\dist\amazify.exe --help | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            throw "amazify.exe --help failed with exit code $LASTEXITCODE."
+          }
+          $windowed = Start-Process -FilePath '.\dist\amazifyw\amazifyw.exe' -ArgumentList '--help' -WindowStyle Hidden -Wait -PassThru
+          if ($windowed.ExitCode -ne 0) {
+            throw "amazifyw.exe --help failed with exit code $($windowed.ExitCode)."
+          }
+
+      - name: Silent isolated installer and uninstaller smoke
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP ("Amazify-Candidate-" + [Guid]::NewGuid().ToString('N'))
+          $arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CI-SMOKE=1 /DIR=`"$installDir`" /MERGETASKS=`"!startupdaemon,!desktopicon,!taskbaricon`""
+          $installer = Start-Process -FilePath '.\dist\AmazifySetup.exe' -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
+          $installedCli = Join-Path $installDir 'amazify.exe'
+          $installedWindowed = Join-Path $installDir 'amazifyw\amazifyw.exe'
+          if ($installer.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $installedCli) -or -not (Test-Path -LiteralPath $installedWindowed)) {
+            throw "Silent installer smoke failed with exit code $($installer.ExitCode)."
+          }
+          & $installedCli --help | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            throw "Installed amazify.exe --help failed with exit code $LASTEXITCODE."
+          }
+          $uninstaller = Join-Path $installDir 'unins000.exe'
+          if (-not (Test-Path -LiteralPath $uninstaller)) {
+            throw 'Silent installer smoke did not create an uninstaller.'
+          }
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CI-SMOKE=1' -WindowStyle Hidden -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) {
+            throw "Silent uninstaller smoke failed with exit code $($uninstall.ExitCode)."
+          }
+          for ($attempt = 0; $attempt -lt 20 -and (Test-Path -LiteralPath $installDir); $attempt++) {
+            Start-Sleep -Milliseconds 250
+          }
+          if (Test-Path -LiteralPath $installDir) {
+            throw "Silent uninstaller left the isolated install directory: $installDir"
+          }
+
+      - name: Generate checksums
+        shell: pwsh
+        run: |
+          $repositoryRoot = (Resolve-Path -LiteralPath '.').Path
+          $artifacts = @(
+            Get-Item -LiteralPath 'dist\amazify.exe'
+            Get-ChildItem -LiteralPath 'dist\amazifyw' -Recurse -File
+            Get-Item -LiteralPath 'dist\AmazifySetup.exe'
+          ) | Sort-Object FullName
+          $lines = foreach ($artifact in $artifacts) {
+            $hash = (Get-FileHash -LiteralPath $artifact.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $relativePath = [IO.Path]::GetRelativePath($repositoryRoot, $artifact.FullName).Replace('\', '/')
+            "$hash  $relativePath"
+          }
+          Set-Content -LiteralPath 'dist\SHA256SUMS.txt' -Value $lines -Encoding ascii
+
+      - name: Microsoft Defender scan
+        id: defender
+        shell: pwsh
+        run: |
+          $status = Get-MpComputerStatus -ErrorAction SilentlyContinue
+          if (-not $status -or -not $status.AntivirusEnabled) {
+            'result=unavailable' >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          $scanPath = (Resolve-Path -LiteralPath 'dist').Path
+          Start-MpScan -ScanType CustomScan -ScanPath $scanPath
+          $threats = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object { $_.Resources -match [regex]::Escape($scanPath) })
+          if ($threats.Count -gt 0) {
+            throw 'Microsoft Defender reported a candidate artifact as a threat.'
+          }
+          'result=passed' >> $env:GITHUB_OUTPUT
+
+      - name: Generate SBOM and build evidence
+        shell: pwsh
+        env:
+          AMAZIFY_CANDIDATE_VERSION: ${{ inputs.version }}
+          AMAZIFY_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          AMAZIFY_DEFENDER_RESULT: ${{ steps.defender.outputs.result }}
+        run: |
+          New-Item -ItemType Directory -Force -Path 'dist\evidence' | Out-Null
+          cyclonedx-py requirements requirements.txt --output-reproducible --output-format JSON --output-file 'dist\evidence\runtime-dependencies.cdx.json'
+          cyclonedx-py environment --pyproject pyproject.toml --output-reproducible --output-format JSON --output-file 'dist\evidence\build-environment.cdx.json'
+          $hashes = [ordered]@{}
+          foreach ($line in Get-Content -LiteralPath 'dist\SHA256SUMS.txt') {
+            $parts = $line -split '\s+', 2
+            $hashes[$parts[1]] = $parts[0]
+          }
+          $manifest = [ordered]@{
+            schema = 1
+            version = $env:AMAZIFY_CANDIDATE_VERSION
+            commit = $env:AMAZIFY_SOURCE_SHA
+            runner = $env:RUNNER_NAME
+            python = (python --version 2>&1).ToString()
+            inno_setup = $env:INNO_VERSION
+            defender = $env:AMAZIFY_DEFENDER_RESULT
+            dependency_locks = [ordered]@{
+              runtime = (Get-FileHash -LiteralPath 'requirements.txt' -Algorithm SHA256).Hash.ToLowerInvariant()
+              build = (Get-FileHash -LiteralPath 'requirements-build.lock' -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
+            artifacts = $hashes
+          }
+          $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath 'dist\evidence\build-manifest.json' -Encoding utf8NoBOM
+          $report = @(
+            '# Candidate Security Evidence'
+            ''
+            "- Commit: $env:AMAZIFY_SOURCE_SHA"
+            "- Version: $env:AMAZIFY_CANDIDATE_VERSION"
+            "- Microsoft Defender: $env:AMAZIFY_DEFENDER_RESULT"
+            '- Dependencies: hash-locked runtime and build environments audited with pip-audit'
+            '- Verification: compile, pytest coverage, workflow contracts, Ruff, Pyright, executable smoke, and isolated installer/uninstaller smoke passed'
+            '- Distribution: Actions artifact only; no GitHub release was created'
+          )
+          Set-Content -LiteralPath 'dist\evidence\security-report.md' -Value $report -Encoding utf8NoBOM
+          Copy-Item -LiteralPath 'dist\SHA256SUMS.txt' -Destination 'dist\evidence\SHA256SUMS.txt'
+
+      - name: Recheck current main
+        shell: pwsh
+        env:
+          AMAZIFY_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          git fetch origin main --no-tags
+          $remote = (git rev-parse origin/main).Trim()
+          if ($remote -ne $env:AMAZIFY_SOURCE_SHA) {
+            throw "main advanced to $remote during the candidate build. Run it again."
+          }
+
+      - name: Attest candidate artifacts
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
         with:
-          name: Amazify-Windows
+          subject-path: |
+            dist/amazify.exe
+            dist/amazifyw/**/*
+            dist/AmazifySetup.exe
+            dist/SHA256SUMS.txt
+            dist/evidence/**/*
+          create-storage-record: false
+
+      - name: Upload candidate artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: Amazify-candidate-v${{ inputs.version }}
           path: |
             dist/amazify.exe
+            dist/amazifyw
             dist/AmazifySetup.exe
+            dist/SHA256SUMS.txt
+            dist/evidence
+          if-no-files-found: error
+          retention-days: 30

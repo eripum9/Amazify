@@ -7,6 +7,7 @@
 Amazify is a Windows prototype that customizes the Amazon Music desktop app at runtime without modifying any packaged files on disk. A local Python companion launches or connects to Amazon Music, injects a reversible runtime via Chromium DevTools, and loads plugins from an in-app marketplace.
 
 [![Windows CI](https://github.com/eripum9/Amazify/actions/workflows/ci-windows.yml/badge.svg)](https://github.com/eripum9/Amazify/actions/workflows/ci-windows.yml)
+[![Security](https://github.com/eripum9/Amazify/actions/workflows/security.yml/badge.svg)](https://github.com/eripum9/Amazify/actions/workflows/security.yml)
 
 ---
 
@@ -17,9 +18,9 @@ Amazify is a Windows prototype that customizes the Amazon Music desktop app at r
 - **Plugin catalog** — GitHub-backed catalog with explicit Download/Update/Reinstall actions
 - **Persistent launch supervisor** — starts at sign-in, accepts launch requests, and stays idle when Amazon Music closes
 - **Fast DevTools reconnect** — discovers ports from running Amazon Music processes and probes candidates concurrently
-- **Localhost bridge** — WebSocket bridge with DevTools binding fallback
+- **Localhost bridge** — authenticated loopback HTTP bridge with a DevTools binding fallback
 - **Stock plugins** — a curated set of tested layout and interface plugins
-- **Permissioned metadata** — each plugin declares required permissions in its manifest
+- **Permissioned metadata** — each plugin declares permissions and receives only declared Amazify capabilities
 - **GUI installer** — Inno Setup 6 installer with optional desktop and taskbar shortcuts
 
 ---
@@ -30,6 +31,7 @@ Amazify is a Windows prototype that customizes the Amazon Music desktop app at r
 |---|---|
 | Windows | 10 or later |
 | Python | 3.10+ |
+| Reproducible CI/build Python | 3.12.10 |
 | Amazon Music | Desktop app |
 
 ---
@@ -41,7 +43,9 @@ Amazify is a Windows prototype that customizes the Amazon Music desktop app at r
 ```powershell
 git clone https://github.com/eripum9/Amazify.git
 cd Amazify
-python -m pip install -e .
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --require-hashes --only-binary=:all: -r requirements-dev.lock
+.\.venv\Scripts\python.exe -m pip install --no-build-isolation --no-deps -e .
 ```
 
 ### Standalone installer (experimental)
@@ -105,21 +109,27 @@ amazify list-candidates
 ### Setup
 
 ```powershell
-python -m pip install -e .
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --require-hashes --only-binary=:all: -r requirements-dev.lock
+.\.venv\Scripts\python.exe -m pip install --no-build-isolation --no-deps -e .
 ```
 
 ### Run tests
 
 ```powershell
-python -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m pytest tests --cov=amazify --cov-report=term-missing --cov-fail-under=45
+.\.venv\Scripts\python.exe -m ruff check amazify packaging tests --select E9,F63,F7,F82
+.\.venv\Scripts\python.exe -m pyright amazify/bridge.py amazify/config.py amazify/devtools.py amazify/native_bridge.py amazify/shortcuts.py amazify/window_identity.py packaging/amazify_installer.py .github/scripts/validate_candidate.py tests/test_workflow_security.py
 ```
 
 ### Build standalone executables and installer
 
-Requires [Inno Setup 6](https://jrsoftware.org/isdl.php) (`ISCC.exe`) on `PATH` or in its default install directory.
+Local packaging requires [Inno Setup 6](https://jrsoftware.org/isdl.php)
+(`ISCC.exe`) on `PATH` or in its default install directory. The official
+candidate workflow verifies Inno Setup 6.7.3 and CPython 3.12.10.
 
 ```powershell
-python -m pip install -e ".[build]"
+.\.venv\Scripts\python.exe -m pip install --require-hashes --only-binary=:all: -r requirements-build.lock
 .\Build.bat
 ```
 
@@ -131,24 +141,42 @@ Outputs:
 | `dist\amazifyw\amazifyw.exe` | Windowless launcher |
 | `dist\AmazifySetup.exe` | GUI installer |
 
+The manual **Build Windows Candidate** workflow performs the same build with
+tests, dependency audits, executable and isolated installer smoke tests,
+checksums, runtime/build SBOMs, security evidence, and GitHub provenance attestations. It
+uploads an Actions artifact only. It cannot create a draft or publish a GitHub
+release. See [Windows candidate builds](docs/candidate-builds.md) and
+[dependency management](docs/dependency-management.md).
+
 ---
 
 ## Plugin Catalog
 
-The catalog is defined in `plugin_catalog.json` and hosted at:
+The update index is defined in the schema-v2 `plugin_catalog.json` and hosted at:
 
 ```
 https://raw.githubusercontent.com/eripum9/Amazify/main/plugin_catalog.json
 ```
 
-Each entry points plugin files at raw GitHub URLs. When the marketplace opens, Amazify refreshes the catalog and compares catalog manifest versions against installed versions. Installed plugins show **Update** when a newer version is available, or **Reinstall** when already up to date.
+Each catalog package declares a trust tier, source repository, immutable
+40-character Git commit, and the SHA-256 and byte size of every file. Amazify
+derives and validates raw GitHub download URLs from those fields rather than
+trusting mutable per-file branch URLs. When the marketplace opens, Amazify
+refreshes the index and compares verified manifest versions against installed
+versions. Installed plugins show **Update** when a newer revision is available,
+or **Reinstall** when already up to date.
 
-To use a local catalog during development:
+Unfrozen source builds can explicitly opt into a local catalog during
+development:
 
 ```powershell
 $env:AMAZIFY_PLUGIN_CATALOG_URL = "file:///C:/path/to/plugin_catalog.json"
-python -m amazify
+$env:AMAZIFY_ALLOW_LOCAL_CATALOG = "1"
+.\.venv\Scripts\python.exe -m amazify
 ```
+
+Frozen production builds do not enable a local catalog from an environment
+variable alone.
 
 ---
 
@@ -182,7 +210,7 @@ Each plugin is a folder containing a `manifest.json` and optional JavaScript/CSS
   "assets": {
     "logo": "assets/logo.svg"
   },
-  "permissions": ["dom-read", "dom-write"],
+  "permissions": ["dom-read", "dom-write", "dom-style"],
   "amazonMusic": {
     "testedAppVersions": [],
     "target": "desktop"
@@ -200,7 +228,12 @@ Each plugin is a folder containing a `manifest.json` and optional JavaScript/CSS
 - Declare only the permissions your plugin actually needs.
 - All runtime DOM changes must be fully reversible.
 - Do not modify Amazon Music packaged files on disk.
-- Third-party plugins should be treated as untrusted until reviewed.
+- Treat community plugins as untrusted even after integrity verification.
+- `dom-read`, `dom-write`, `dom-style`, and `network` disclose renderer-level
+  authority; they do not form a complete JavaScript sandbox.
+- Read the [security policy](SECURITY.md), [threat model](docs/threat-model.md),
+  and [network endpoint inventory](docs/network-endpoints.md) before adding a
+  privileged capability.
 
 ---
 
@@ -215,7 +248,7 @@ packaging/            PyInstaller entry points and Inno Setup installer script
 packaging/assets/     Logo PNG and ICO for executables and installer
 plugin_catalog.json   GitHub-backed marketplace catalog
 Build.bat             Builds standalone executables and GUI installer
-.github/workflows/    CI workflows
+.github/workflows/    Pinned CI, security, and non-publishing candidate workflows
 ```
 
 ---
@@ -237,7 +270,8 @@ Amazify stores all runtime state outside the repository:
 Contributions are welcome. Please:
 
 1. Fork the repository and create a feature branch.
-2. Run `python -m unittest discover -s tests -v` and ensure all tests pass.
+2. Install `requirements-dev.lock` with `--require-hashes` and run the checks in
+   [Development](#development).
 3. Keep changes focused and include tests for new behavior where practical.
 4. Open a pull request with a clear description of the change.
 

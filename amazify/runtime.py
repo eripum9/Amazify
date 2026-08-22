@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import base64
-from importlib import resources
 import json
-from pathlib import Path
 import sys
+from importlib import resources
+from pathlib import Path
 from typing import Any
 
 from . import __version__
@@ -12,7 +12,11 @@ from . import __version__
 
 def _runtime_logo_data_uri() -> str:
     logo = _read_runtime_logo()
-    return f"data:image/png;base64,{base64.b64encode(logo).decode('ascii')}" if logo else ""
+    return (
+        f"data:image/png;base64,{base64.b64encode(logo).decode('ascii')}"
+        if logo
+        else ""
+    )
 
 
 def _read_runtime_logo() -> bytes:
@@ -44,42 +48,91 @@ def build_runtime_script(
     bridge_token: str,
     plugins: list[dict[str, Any]],
     catalog_plugins: list[dict[str, Any]] | None = None,
+    native_session_nonce: str | None = None,
+    native_response_callback: str | None = None,
 ) -> str:
     bridge_url_json = json.dumps(bridge_url)
     bridge_token_json = json.dumps(bridge_token)
     plugins_json = json.dumps(plugins)
     catalog_plugins_json = json.dumps(catalog_plugins or [])
+    native_session_nonce_json = json.dumps(native_session_nonce or "")
+    native_response_callback_json = json.dumps(native_response_callback or "")
     version_json = json.dumps(__version__)
     logo_data_uri_json = json.dumps(_runtime_logo_data_uri())
     return f"""
 (() => {{
+  // Capture bridge primitives before any plugin code mounts. DOM and network
+  // permissions disclose renderer access; they are not a JavaScript sandbox.
+  const NATIVE_FUNCTION = window.Function;
+  const NATIVE_FETCH = typeof window.fetch === "function" ? window.fetch.bind(window) : null;
+  const NATIVE_RESPONSE_JSON = window.Response && window.Response.prototype && typeof window.Response.prototype.json === "function"
+    ? Function.prototype.call.bind(window.Response.prototype.json)
+    : null;
+  const NATIVE_COMMAND = typeof window.AmazifyNativeCommand === "function"
+    ? window.AmazifyNativeCommand.bind(window)
+    : null;
+  const NATIVE_CONFIRM = typeof window.confirm === "function" ? window.confirm.bind(window) : () => false;
+  const NATIVE_DEFINE_PROPERTY = Object.defineProperty.bind(Object);
+  const NATIVE_ASSIGN = Object.assign.bind(Object);
+  const NATIVE_FREEZE = Object.freeze.bind(Object);
+  const NATIVE_KEYS = Object.keys.bind(Object);
+  const NATIVE_STRING = window.String;
+  const NATIVE_SET = window.Set;
+  const NATIVE_SET_ADD = Function.prototype.call.bind(Set.prototype.add);
+  const NATIVE_SET_HAS = Function.prototype.call.bind(Set.prototype.has);
+  const NATIVE_ARRAY_IS_ARRAY = Array.isArray.bind(Array);
+  const NATIVE_JSON_PARSE = JSON.parse.bind(JSON);
+  const NATIVE_JSON_STRINGIFY = JSON.stringify.bind(JSON);
+  const NATIVE_HAS_OWN = Function.prototype.call.bind(Object.prototype.hasOwnProperty);
+  const NATIVE_PROMISE = window.Promise;
+  const NATIVE_MAP = window.Map;
+  const NATIVE_MAP_GET = Function.prototype.call.bind(Map.prototype.get);
+  const NATIVE_MAP_SET = Function.prototype.call.bind(Map.prototype.set);
+  const NATIVE_MAP_HAS = Function.prototype.call.bind(Map.prototype.has);
+  const NATIVE_MAP_DELETE = Function.prototype.call.bind(Map.prototype.delete);
+  const NATIVE_MAP_FOR_EACH = Function.prototype.call.bind(Map.prototype.forEach);
+  const NATIVE_MAP_CLEAR = Function.prototype.call.bind(Map.prototype.clear);
+  const NATIVE_DISPATCH_EVENT = Function.prototype.call.bind(EventTarget.prototype.dispatchEvent);
+  const NATIVE_ADD_EVENT_LISTENER = Function.prototype.call.bind(EventTarget.prototype.addEventListener);
+  const NATIVE_REMOVE_EVENT_LISTENER = Function.prototype.call.bind(EventTarget.prototype.removeEventListener);
+  const NATIVE_EVENT = window.Event;
+  const CLEANUP_EVENT = "amazify-runtime-cleanup-request";
+
+  // Cleanup may run arbitrary plugin teardown. Keep bridge credentials out of
+  // scope until all trusted references needed by the replacement are captured.
+  NATIVE_DISPATCH_EVENT(window, new NATIVE_EVENT(CLEANUP_EVENT));
+  if (NATIVE_COMMAND) {{
+    try {{
+      delete window.AmazifyNativeCommand;
+    }} catch (_error) {{
+      try {{ window.AmazifyNativeCommand = undefined; }} catch (_ignored) {{}}
+    }}
+  }}
+
   const VERSION = {version_json};
   const BRIDGE_URL = {bridge_url_json};
   const BRIDGE_TOKEN = {bridge_token_json};
   const INITIAL_PLUGINS = {plugins_json};
   const INITIAL_CATALOG_PLUGINS = {catalog_plugins_json};
+  const NATIVE_SESSION_NONCE = {native_session_nonce_json};
+  const NATIVE_RESPONSE_CALLBACK = {native_response_callback_json};
   const LOGO_DATA_URI = {logo_data_uri_json};
   const RUNTIME_STYLE_ID = "amazify-runtime-style";
   const ROOT_SELECTOR = '[data-amazify-root="true"]';
   const PANEL_SELECTOR = '[data-amazify-panel="true"]';
   const MENU_SELECTOR = '[data-amazify-menu="true"]';
   const SETTINGS_STORAGE_KEY = "amazify.runtime.settings.v1";
-
-  if (window.Amazify && typeof window.Amazify.cleanup === "function") {{
-    window.Amazify.cleanup();
-  }}
+  let runtimeActive = true;
 
   function readRuntimePreferences() {{
     const defaults = {{
-      autoCheckUpdates: true,
-      enableAfterDownload: false
+      autoCheckUpdates: true
     }};
     try {{
-      const saved = JSON.parse(window.localStorage.getItem(SETTINGS_STORAGE_KEY) || "{{}}");
+      const saved = NATIVE_JSON_PARSE(window.localStorage.getItem(SETTINGS_STORAGE_KEY) || "{{}}");
       if (!saved || typeof saved !== "object") return defaults;
       return {{
-        autoCheckUpdates: typeof saved.autoCheckUpdates === "boolean" ? saved.autoCheckUpdates : defaults.autoCheckUpdates,
-        enableAfterDownload: typeof saved.enableAfterDownload === "boolean" ? saved.enableAfterDownload : defaults.enableAfterDownload
+        autoCheckUpdates: typeof saved.autoCheckUpdates === "boolean" ? saved.autoCheckUpdates : defaults.autoCheckUpdates
       }};
     }} catch (_error) {{
       return defaults;
@@ -88,13 +141,13 @@ def build_runtime_script(
 
   const state = {{
     activePanel: null,
-    plugins: new Map(),
-    catalogPlugins: new Map(),
+    plugins: new NATIVE_MAP(),
+    catalogPlugins: new NATIVE_MAP(),
     root: null,
     actionHost: null,
     observer: null,
-    mountedPlugins: new Map(),
-    nativeRequests: new Map(),
+    mountedPlugins: new NATIVE_MAP(),
+    nativeRequests: new NATIVE_MAP(),
     nativeSequence: 0,
     lastError: "",
     catalogError: "",
@@ -103,6 +156,39 @@ def build_runtime_script(
     bridgeStatus: "Connected",
     preferences: readRuntimePreferences()
   }};
+
+  function mapValuesSnapshot(map) {{
+    const values = [];
+    NATIVE_MAP_FOR_EACH(map, (value) => {{
+      values[values.length] = value;
+    }});
+    return values;
+  }}
+
+  function mapKeysSnapshot(map) {{
+    const keys = [];
+    NATIVE_MAP_FOR_EACH(map, (_value, key) => {{
+      keys[keys.length] = key;
+    }});
+    return keys;
+  }}
+
+  function countMapValues(map, predicate) {{
+    let count = 0;
+    NATIVE_MAP_FOR_EACH(map, (value) => {{
+      if (predicate(value)) count += 1;
+    }});
+    return count;
+  }}
+
+  if (/^__amazifyNativeResult_[0-9a-f]{{36}}$/.test(NATIVE_RESPONSE_CALLBACK)) {{
+    NATIVE_DEFINE_PROPERTY(window, NATIVE_RESPONSE_CALLBACK, {{
+      value: (id, result) => runtimeActive ? receiveNativeResult(id, result) : false,
+      enumerable: false,
+      configurable: false,
+      writable: false
+    }});
+  }}
 
   const css = `
     [data-amazify-root="true"] {{
@@ -681,12 +767,19 @@ def build_runtime_script(
     renderMenu(anchor);
   }}
 
+  function addTrustedLifecycleClick(target, handler) {{
+    NATIVE_ADD_EVENT_LISTENER(target, "click", (event) => {{
+      if (!event || event.isTrusted !== true) return;
+      return handler(event);
+    }});
+  }}
+
   function renderMenu(anchor) {{
     const existingMenu = document.querySelector(MENU_SELECTOR);
     if (existingMenu) existingMenu.remove();
     const menu = document.createElement("div");
     menu.dataset.amazifyMenu = "true";
-    const enabledCount = [...state.plugins.values()].filter((plugin) => plugin.enabled).length;
+    const enabledCount = countMapValues(state.plugins, (plugin) => plugin.enabled);
     menu.innerHTML = `
       <div class="amazify-menu-head">
         <div class="amazify-menu-title">${{logoMarkup("amazify-logo amazify-logo-menu")}}<span>Amazify</span></div>
@@ -708,7 +801,7 @@ def build_runtime_script(
     positionMenu(menu, anchor);
     menu.querySelector('[data-amazify-open="marketplace"]').addEventListener("click", () => openPanel("marketplace"));
     menu.querySelector('[data-amazify-open="settings"]').addEventListener("click", () => openPanel("settings"));
-    menu.querySelector("[data-amazify-disable-all]").addEventListener("click", async () => {{
+    addTrustedLifecycleClick(menu.querySelector("[data-amazify-disable-all]"), async () => {{
       await disableAllPlugins();
       const menuAfterDisable = document.querySelector(MENU_SELECTOR);
       if (menuAfterDisable) menuAfterDisable.remove();
@@ -784,16 +877,16 @@ def build_runtime_script(
       }});
     }});
     panel.querySelectorAll("[data-amazify-toggle-plugin]").forEach((toggle) => {{
-      toggle.addEventListener("click", async () => {{
+      addTrustedLifecycleClick(toggle, async () => {{
         const pluginId = toggle.dataset.amazifyTogglePlugin;
         const enabled = toggle.getAttribute("aria-pressed") !== "true";
         await setPluginEnabled(pluginId, enabled);
       }});
     }});
     const refreshStateButton = panel.querySelector("[data-amazify-refresh-state]");
-    if (refreshStateButton) refreshStateButton.addEventListener("click", refreshFromBridge);
+    if (refreshStateButton) addTrustedLifecycleClick(refreshStateButton, refreshFromBridge);
     const refreshCatalogButton = panel.querySelector("[data-amazify-refresh-catalog]");
-    if (refreshCatalogButton) refreshCatalogButton.addEventListener("click", refreshCatalogFromBridge);
+    if (refreshCatalogButton) addTrustedLifecycleClick(refreshCatalogButton, refreshCatalogFromBridge);
     const openMarketplaceButton = panel.querySelector("[data-amazify-open-marketplace]");
     if (openMarketplaceButton) openMarketplaceButton.addEventListener("click", () => openPanel("marketplace"));
     panel.querySelectorAll("[data-amazify-setting]").forEach((toggle) => {{
@@ -804,9 +897,9 @@ def build_runtime_script(
       }});
     }});
     const disableAllButton = panel.querySelector("[data-amazify-disable-all]");
-    if (disableAllButton) disableAllButton.addEventListener("click", disableAllPlugins);
+    if (disableAllButton) addTrustedLifecycleClick(disableAllButton, disableAllPlugins);
     panel.querySelectorAll("[data-amazify-install-plugin]").forEach((button) => {{
-      button.addEventListener("click", async () => {{
+      addTrustedLifecycleClick(button, async () => {{
         await installPlugin(button.dataset.amazifyInstallPlugin);
       }});
     }});
@@ -825,24 +918,28 @@ def build_runtime_script(
   }}
 
   function marketplacePlugins() {{
-    const merged = new Map();
-    for (const catalogPlugin of state.catalogPlugins.values()) {{
+    const merged = new NATIVE_MAP();
+    const catalogPlugins = mapValuesSnapshot(state.catalogPlugins);
+    for (let index = 0; index < catalogPlugins.length; index += 1) {{
+      const catalogPlugin = catalogPlugins[index];
       if (!catalogPlugin || !catalogPlugin.manifest || !catalogPlugin.manifest.id) continue;
-      merged.set(catalogPlugin.manifest.id, {{
+      NATIVE_MAP_SET(merged, catalogPlugin.manifest.id, {{
         catalog: catalogPlugin,
-        installed: state.plugins.get(catalogPlugin.manifest.id) || null
+        installed: NATIVE_MAP_GET(state.plugins, catalogPlugin.manifest.id) || null
       }});
     }}
-    for (const installed of state.plugins.values()) {{
+    const installedPlugins = mapValuesSnapshot(state.plugins);
+    for (let index = 0; index < installedPlugins.length; index += 1) {{
+      const installed = installedPlugins[index];
       if (!installed || !installed.manifest || !installed.manifest.id) continue;
-      if (!merged.has(installed.manifest.id)) {{
-        merged.set(installed.manifest.id, {{
+      if (!NATIVE_MAP_HAS(merged, installed.manifest.id)) {{
+        NATIVE_MAP_SET(merged, installed.manifest.id, {{
           catalog: null,
           installed
         }});
       }}
     }}
-    return [...merged.values()].sort((a, b) => {{
+    return mapValuesSnapshot(merged).sort((a, b) => {{
       const aChannel = a.catalog ? String(a.catalog.channel || "") : "local";
       const bChannel = b.catalog ? String(b.catalog.channel || "") : "local";
       if (aChannel !== bChannel) return aChannel.localeCompare(bChannel);
@@ -855,14 +952,34 @@ def build_runtime_script(
     const catalog = plugin.catalog;
     const manifest = (installed || catalog).manifest;
     const isInstalled = Boolean(installed);
-    const channel = catalog ? String(catalog.channel || "community") : "local";
+    const installedSecurity = installed && installed.security && typeof installed.security === "object"
+      ? installed.security
+      : null;
+    const channel = catalog
+      ? String(catalog.trust || catalog.channel || "community")
+      : String((installedSecurity && installedSecurity.trust) || "local");
     const metaVersion = isInstalled ? installed.manifest.version : manifest.version;
     const permissions = (manifest.permissions || []).map((permission) => `<span class="amazify-permission">${{esc(permission)}}</span>`).join("");
+    const sourceCommit = catalog ? String(catalog.sourceCommit || "") : String((installedSecurity && installedSecurity.sourceCommit) || "");
+    const verificationRequired = Boolean(
+      catalog && catalog.verification && catalog.verification.required
+    );
+    const installedVerified = Boolean(installedSecurity && installedSecurity.verified);
+    const integrityFailed = Boolean(
+      installedSecurity &&
+      ["catalog-sha256", "bundled"].includes(String(installedSecurity.method || "")) &&
+      installedSecurity.verified !== true
+    );
+    const trustDetail = channel === "community"
+      ? "Third-party community code - review its source and permissions before enabling"
+      : channel === "stock"
+        ? "Amazify stock plugin with pinned source and SHA-256 verification"
+        : "Local plugin - source integrity is managed by you";
     const downloadButton = catalog
       ? `<button class="amazify-primary" type="button" data-amazify-install-plugin="${{esc(manifest.id)}}">${{isInstalled ? (catalog.updateAvailable ? "Update" : "Reinstall") : "Download"}}</button>`
       : "";
     const toggleButton = isInstalled
-      ? `<button class="amazify-toggle" type="button" aria-label="Toggle ${{esc(manifest.name)}}" aria-pressed="${{installed.enabled ? "true" : "false"}}" data-amazify-toggle-plugin="${{esc(manifest.id)}}"></button>`
+      ? `<button class="amazify-toggle" type="button" aria-label="Toggle ${{esc(manifest.name)}}" aria-pressed="${{installed.enabled ? "true" : "false"}}" data-amazify-toggle-plugin="${{esc(manifest.id)}}" ${{integrityFailed ? "disabled" : ""}}></button>`
       : "";
     return `
       <div class="amazify-plugin-row" data-amazify-plugin-id="${{esc(manifest.id)}}">
@@ -874,16 +991,17 @@ def build_runtime_script(
           <div class="amazify-plugin-controls">${{downloadButton}}${{toggleButton}}</div>
         </div>
         <div class="amazify-plugin-desc">${{esc(manifest.description)}}</div>
+        <div class="amazify-plugin-meta">${{esc(trustDetail)}}${{sourceCommit ? ` - source ${{esc(sourceCommit.slice(0, 12))}}` : ""}}${{installedVerified ? " - installed files verified" : (!isInstalled && verificationRequired ? " - SHA-256 verification required" : "")}}${{integrityFailed ? " - integrity check failed; execution blocked" : ""}}</div>
         <div class="amazify-permissions">${{permissions || '<span class="amazify-permission">no special permissions</span>'}}</div>
       </div>
     `;
   }}
 
   function renderSettings() {{
-    const pluginCount = state.plugins.size;
-    const catalogCount = state.catalogPlugins.size;
-    const enabledCount = [...state.plugins.values()].filter((plugin) => plugin.enabled).length;
-    const updateCount = [...state.catalogPlugins.values()].filter((plugin) => plugin.updateAvailable).length;
+    const pluginCount = mapValuesSnapshot(state.plugins).length;
+    const catalogCount = mapValuesSnapshot(state.catalogPlugins).length;
+    const enabledCount = countMapValues(state.plugins, (plugin) => plugin.enabled);
+    const updateCount = countMapValues(state.catalogPlugins, (plugin) => plugin.updateAvailable);
     const catalogStatus = state.catalogError
       ? state.catalogError
       : `${{catalogCount}} ${{catalogCount === 1 ? "entry" : "entries"}} loaded`;
@@ -892,10 +1010,6 @@ def build_runtime_script(
       <div class="amazify-setting-row">
         <div><strong>Check for plugin updates automatically</strong><span>Refresh the catalog whenever Marketplace opens</span></div>
         <button class="amazify-toggle" type="button" aria-label="Check for plugin updates automatically" aria-pressed="${{state.preferences.autoCheckUpdates ? "true" : "false"}}" data-amazify-setting="autoCheckUpdates"></button>
-      </div>
-      <div class="amazify-setting-row">
-        <div><strong>Enable new plugins after download</strong><span>Installed updates keep their existing enabled state</span></div>
-        <button class="amazify-toggle" type="button" aria-label="Enable new plugins after download" aria-pressed="${{state.preferences.enableAfterDownload ? "true" : "false"}}" data-amazify-setting="enableAfterDownload"></button>
       </div>
 
       <div class="amazify-section-title">Plugin management</div>
@@ -929,18 +1043,23 @@ def build_runtime_script(
   }}
 
   function setRuntimePreference(name, value) {{
-    if (!Object.prototype.hasOwnProperty.call(state.preferences, name)) return;
+    if (!NATIVE_HAS_OWN(state.preferences, name)) return;
     state.preferences[name] = Boolean(value);
     try {{
-      window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(state.preferences));
+      window.localStorage.setItem(SETTINGS_STORAGE_KEY, NATIVE_JSON_STRINGIFY(state.preferences));
     }} catch (_error) {{
       // The setting still applies for this session when storage is unavailable.
     }}
     renderPanel();
   }}
 
+  class BridgeResponseError extends Error {{}}
+
   async function fetchBridge(path, options = {{}}) {{
-    const response = await fetch(`${{BRIDGE_URL}}${{path}}`, {{
+    if (!NATIVE_FETCH || !NATIVE_RESPONSE_JSON) {{
+      throw new TypeError("Native fetch is unavailable");
+    }}
+    const response = await NATIVE_FETCH(`${{BRIDGE_URL}}${{path}}`, {{
       ...options,
       headers: {{
         "Content-Type": "application/json",
@@ -948,34 +1067,39 @@ def build_runtime_script(
         ...(options.headers || {{}})
       }}
     }});
-    const data = await response.json();
+    const data = await NATIVE_RESPONSE_JSON(response);
     if (!response.ok || data.error) {{
-      throw new Error(data.error || `Bridge request failed: ${{response.status}}`);
+      throw new BridgeResponseError(data.error || `Bridge request failed: ${{response.status}}`);
     }}
     return data;
   }}
 
   function nativeCommand(name, payload = {{}}) {{
-    return new Promise((resolve, reject) => {{
-      if (typeof window.AmazifyNativeCommand !== "function") {{
+    return new NATIVE_PROMISE((resolve, reject) => {{
+      if (!NATIVE_COMMAND || !NATIVE_SESSION_NONCE || !NATIVE_RESPONSE_CALLBACK) {{
         reject(new Error("Local bridge unavailable"));
         return;
       }}
-      const id = `${{Date.now()}}-${{++state.nativeSequence}}`;
+      const id = `${{NATIVE_SESSION_NONCE}}.${{Date.now()}}.${{++state.nativeSequence}}`;
       const timeout = setTimeout(() => {{
-        state.nativeRequests.delete(id);
+        NATIVE_MAP_DELETE(state.nativeRequests, id);
         reject(new Error("Native bridge timed out"));
       }}, 5000);
-      state.nativeRequests.set(id, {{ resolve, reject, timeout }});
-      window.AmazifyNativeCommand(JSON.stringify({{ id, name, payload }}));
+      NATIVE_MAP_SET(state.nativeRequests, id, {{ resolve, reject, timeout }});
+      NATIVE_COMMAND(NATIVE_JSON_STRINGIFY({{
+        id,
+        name,
+        payload,
+        sessionNonce: NATIVE_SESSION_NONCE
+      }}));
     }});
   }}
 
   function receiveNativeResult(id, result) {{
-    const request = state.nativeRequests.get(id);
+    const request = NATIVE_MAP_GET(state.nativeRequests, id);
     if (!request) return false;
     clearTimeout(request.timeout);
-    state.nativeRequests.delete(id);
+    NATIVE_MAP_DELETE(state.nativeRequests, id);
     if (result && result.ok === false) {{
       request.reject(new Error(result.error || "Native bridge command failed"));
     }} else {{
@@ -992,32 +1116,35 @@ def build_runtime_script(
       if (name === "plugins.enable") {{
         return await fetchBridge("/plugins/enable", {{
           method: "POST",
-          body: JSON.stringify({{ pluginId: payload.pluginId }})
+          body: NATIVE_JSON_STRINGIFY({{ pluginId: payload.pluginId }})
         }});
       }}
       if (name === "plugins.disable") {{
         return await fetchBridge("/plugins/disable", {{
           method: "POST",
-          body: JSON.stringify({{ pluginId: payload.pluginId }})
+          body: NATIVE_JSON_STRINGIFY({{ pluginId: payload.pluginId }})
         }});
       }}
       if (name === "plugins.install") {{
         return await fetchBridge("/plugins/install", {{
           method: "POST",
-          body: JSON.stringify({{ pluginId: payload.pluginId }})
+          body: NATIVE_JSON_STRINGIFY({{ pluginId: payload.pluginId }})
         }});
       }}
       if (name === "catalog.refresh") {{
         return await fetchBridge("/command", {{
           method: "POST",
-          body: JSON.stringify({{ name, payload }})
+          body: NATIVE_JSON_STRINGIFY({{ name, payload }})
         }});
       }}
       return await fetchBridge("/command", {{
         method: "POST",
-        body: JSON.stringify({{ name, payload }})
+        body: NATIVE_JSON_STRINGIFY({{ name, payload }})
       }});
     }} catch (error) {{
+      if (error instanceof BridgeResponseError) {{
+        throw error;
+      }}
       const result = await nativeCommand(name, payload);
       state.bridgeStatus = "Connected through DevTools binding";
       return result;
@@ -1067,7 +1194,7 @@ def build_runtime_script(
 
   async function disableAllPlugins() {{
     try {{
-      const data = await bridge.command("plugins.disableAll", {{}});
+      const data = await bridgeCommand("plugins.disableAll", {{}});
       state.lastError = "";
       syncStatePayload(data);
     }} catch (error) {{
@@ -1078,15 +1205,32 @@ def build_runtime_script(
 
   async function installPlugin(pluginId) {{
     if (!pluginId) return;
-    const wasInstalled = state.plugins.has(pluginId);
+    const catalog = NATIVE_MAP_GET(state.catalogPlugins, pluginId);
+    if (!catalog || !catalog.manifest) {{
+      state.lastError = "The selected plugin is not present in the verified catalog.";
+      renderPanel();
+      return;
+    }}
+    const manifest = catalog.manifest;
+    const trust = String(catalog.trust || catalog.channel || "community");
+    const permissions = Array.isArray(manifest.permissions) && manifest.permissions.length
+      ? manifest.permissions.join(", ")
+      : "none declared";
+    const source = `${{String(catalog.repository || "unknown source")}}@${{String(catalog.sourceCommit || "").slice(0, 12)}}`;
+    const warning = trust === "community"
+      ? "This is third-party community code. Review its source before enabling it."
+      : "This is an Amazify stock plugin from a pinned source revision.";
+    const confirmed = NATIVE_CONFIRM(
+      `${{NATIVE_MAP_HAS(state.plugins, pluginId) ? "Install this update" : "Download this plugin"}}?\n\n` +
+      `${{manifest.name}} v${{manifest.version}}\n` +
+      `Trust: ${{trust}}\nSource: ${{source}}\nPermissions: ${{permissions}}\n\n` +
+      `${{warning}}\n\nThe download is checked against its catalog SHA-256 hashes and will remain disabled until you enable it.`
+    );
+    if (!confirmed) return;
     try {{
       state.lastError = "";
       const data = await bridgeCommand("plugins.install", {{ pluginId }});
       syncStatePayload(data);
-      if (!wasInstalled && state.preferences.enableAfterDownload) {{
-        const enabledData = await bridgeCommand("plugins.enable", {{ pluginId }});
-        syncStatePayload(enabledData);
-      }}
     }} catch (error) {{
       state.lastError = error.message || String(error);
       renderPanel();
@@ -1134,7 +1278,7 @@ def build_runtime_script(
   }}
 
   function buildPluginAssetIndex(plugin) {{
-    const index = new Map();
+    const index = new NATIVE_MAP();
     const assets = plugin && plugin.source && Array.isArray(plugin.source.assets) ? plugin.source.assets : [];
     for (const asset of assets) {{
       const normalized = publicAsset(asset);
@@ -1146,7 +1290,7 @@ def build_runtime_script(
         normalizeAssetPath(normalized.path)
       ].filter(Boolean);
       for (const key of keys) {{
-        index.set(key, normalized);
+        NATIVE_MAP_SET(index, key, normalized);
       }}
     }}
     return index;
@@ -1155,21 +1299,21 @@ def build_runtime_script(
   function findAssetInIndex(assetIndex, reference, basePath = "") {{
     if (!assetIndex || !reference) return null;
     return (
-      assetIndex.get(String(reference)) ||
-      assetIndex.get(normalizeAssetPath(reference)) ||
-      assetIndex.get(normalizeAssetPath(reference, basePath)) ||
+      NATIVE_MAP_GET(assetIndex, NATIVE_STRING(reference)) ||
+      NATIVE_MAP_GET(assetIndex, normalizeAssetPath(reference)) ||
+      NATIVE_MAP_GET(assetIndex, normalizeAssetPath(reference, basePath)) ||
       null
     );
   }}
 
   function pluginAsset(pluginId, nameOrPath) {{
-    const plugin = state.plugins.get(pluginId);
+    const plugin = NATIVE_MAP_GET(state.plugins, pluginId);
     if (!plugin) return null;
     return findAssetInIndex(buildPluginAssetIndex(plugin), nameOrPath);
   }}
 
   function listPluginAssets(pluginId) {{
-    const plugin = state.plugins.get(pluginId);
+    const plugin = NATIVE_MAP_GET(state.plugins, pluginId);
     const assets = plugin && plugin.source && Array.isArray(plugin.source.assets) ? plugin.source.assets : [];
     return assets.map(publicAsset).filter(Boolean);
   }}
@@ -1185,6 +1329,151 @@ def build_runtime_script(
     }});
   }}
 
+  function clonePlain(value) {{
+    if (NATIVE_ARRAY_IS_ARRAY(value)) {{
+      const copy = [];
+      for (let index = 0; index < value.length; index += 1) {{
+        copy[index] = clonePlain(value[index]);
+      }}
+      return copy;
+    }}
+    if (!value || typeof value !== "object") return value;
+    const copy = {{}};
+    const keys = NATIVE_KEYS(value);
+    for (let index = 0; index < keys.length; index += 1) {{
+      const key = keys[index];
+      copy[key] = clonePlain(value[key]);
+    }}
+    return copy;
+  }}
+
+  function freezeDeep(value) {{
+    if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+    const keys = NATIVE_KEYS(value);
+    for (let index = 0; index < keys.length; index += 1) {{
+      freezeDeep(value[keys[index]]);
+    }}
+    return NATIVE_FREEZE(value);
+  }}
+
+  function declaredPermissions(manifest) {{
+    const source = manifest && NATIVE_ARRAY_IS_ARRAY(manifest.permissions)
+      ? manifest.permissions
+      : [];
+    const result = [];
+    for (let index = 0; index < source.length; index += 1) {{
+      if (typeof source[index] === "string") result[result.length] = source[index];
+    }}
+    return result;
+  }}
+
+  function declaresPermission(manifest, name) {{
+    const permissions = declaredPermissions(manifest);
+    for (let index = 0; index < permissions.length; index += 1) {{
+      if (permissions[index] === name) return true;
+    }}
+    return false;
+  }}
+
+  function publicPluginRecord(plugin) {{
+    if (!plugin || !plugin.manifest) return undefined;
+    return freezeDeep({{
+      manifest: clonePlain(plugin.manifest),
+      enabled: Boolean(plugin.enabled),
+      security: clonePlain(plugin.security || {{}})
+    }});
+  }}
+
+  const publicPluginLookup = NATIVE_FREEZE({{
+    get: (pluginId) => publicPluginRecord(NATIVE_MAP_GET(state.plugins, NATIVE_STRING(pluginId || "")))
+  }});
+
+  function scopedReference(pluginId, args) {{
+    if (args.length >= 2) {{
+      if (NATIVE_STRING(args[0] || "") !== pluginId) {{
+        throw new Error("Plugins may only access their own assets");
+      }}
+      return args[1];
+    }}
+    return args[0];
+  }}
+
+  function addHeaderActionForPlugin(pluginId, args) {{
+    let label;
+    let onClick;
+    if (args.length >= 3) {{
+      if (NATIVE_STRING(args[0] || "") !== pluginId) {{
+        throw new Error("Plugins may only register their own header actions");
+      }}
+      label = args[1];
+      onClick = args[2];
+    }} else {{
+      label = args[0];
+      onClick = args[1];
+    }}
+    attachRoot();
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "amazify-plugin-action";
+    action.dataset.amazifyPluginId = pluginId;
+    action.textContent = String(label || "Plugin");
+    action.addEventListener("click", (event) => {{
+      event.stopPropagation();
+      if (typeof onClick === "function") onClick(event);
+    }});
+    state.actionHost.appendChild(action);
+    return action;
+  }}
+
+  function buildPluginApi(plugin) {{
+    const manifest = plugin.manifest || {{}};
+    const pluginId = NATIVE_STRING(manifest.id || "");
+    const permissionList = declaredPermissions(manifest);
+    const permissions = new NATIVE_SET();
+    for (let index = 0; index < permissionList.length; index += 1) {{
+      NATIVE_SET_ADD(permissions, permissionList[index]);
+    }}
+    const ui = NATIVE_FREEZE({{
+      openMarketplace: () => openPanel("marketplace"),
+      openSettings: () => openPanel("settings"),
+      closePanel,
+      addHeaderAction: (...args) => addHeaderActionForPlugin(pluginId, args)
+    }});
+    const assets = NATIVE_FREEZE({{
+      list: (requestedId) => {{
+        if (requestedId !== undefined && NATIVE_STRING(requestedId) !== pluginId) {{
+          throw new Error("Plugins may only access their own assets");
+        }}
+        return freezeDeep(clonePlain(listPluginAssets(pluginId)));
+      }},
+      get: (...args) => freezeDeep(clonePlain(pluginAsset(pluginId, scopedReference(pluginId, args)))),
+      url: (...args) => {{
+        const asset = pluginAsset(pluginId, scopedReference(pluginId, args));
+        return asset ? asset.dataUri : "";
+      }}
+    }});
+    const api = {{
+      version: VERSION,
+      permissions: NATIVE_FREEZE(permissionList),
+      ui,
+      assets
+    }};
+    if (
+      NATIVE_SET_HAS(permissions, "bridge-state") ||
+      NATIVE_SET_HAS(permissions, "bridge-command")
+    ) {{
+      const pluginBridge = {{}};
+      if (NATIVE_SET_HAS(permissions, "bridge-state")) {{
+        pluginBridge.getState = () => bridgeCommand("state.get", {{}});
+      }}
+      if (NATIVE_SET_HAS(permissions, "bridge-command")) {{
+        pluginBridge.command = (name, payload = {{}}) => bridgeCommand(NATIVE_STRING(name || ""), payload);
+      }}
+      api.bridge = NATIVE_FREEZE(pluginBridge);
+    }}
+    return NATIVE_FREEZE(api);
+  }}
+
   function mountPlugin(plugin) {{
     const manifest = plugin.manifest;
     const pluginId = manifest.id;
@@ -1192,37 +1481,50 @@ def build_runtime_script(
 
     const assetIndex = buildPluginAssetIndex(plugin);
     const styles = plugin.source && plugin.source.styles ? plugin.source.styles : [];
-    for (const styleSource of styles) {{
-      const style = document.createElement("style");
-      style.dataset.amazifyStyleId = pluginId;
-      style.dataset.amazifyPluginId = pluginId;
-      style.textContent = rewriteCssAssetUrls(styleSource.content, styleSource.path, assetIndex);
-      document.head.appendChild(style);
-    }}
-
     let cleanup = null;
+    try {{
+      if (styles.length && !declaresPermission(manifest, "dom-style")) {{
+        throw new Error("Plugin styles require the dom-style permission");
+      }}
+      for (const styleSource of styles) {{
+        const style = document.createElement("style");
+        style.dataset.amazifyStyleId = pluginId;
+        style.dataset.amazifyPluginId = pluginId;
+        style.textContent = rewriteCssAssetUrls(styleSource.content, styleSource.path, assetIndex);
+        document.head.appendChild(style);
+      }}
+
     const entry = plugin.source ? plugin.source.entry : "";
     if (entry) {{
-      const runner = new Function("Amazify", "manifest", "source", `${{entry}}\\n//# sourceURL=amazify-plugin-${{pluginId}}.js`);
-      const pluginSource = Object.assign({{}}, plugin.source || {{}}, {{
-        assets: listPluginAssets(pluginId),
+      const runner = new NATIVE_FUNCTION("Amazify", "manifest", "source", `${{entry}}\\n//# sourceURL=amazify-plugin-${{pluginId}}.js`);
+      const pluginSource = NATIVE_ASSIGN({{}}, clonePlain(plugin.source || {{}}), {{
+        assets: clonePlain(listPluginAssets(pluginId)),
         assetUrl: (nameOrPath) => {{
           const asset = pluginAsset(pluginId, nameOrPath);
           return asset ? asset.dataUri : "";
         }},
-        asset: (nameOrPath) => pluginAsset(pluginId, nameOrPath)
+        asset: (nameOrPath) => freezeDeep(clonePlain(pluginAsset(pluginId, nameOrPath)))
       }});
-      const result = runner(window.Amazify, manifest, pluginSource);
+      freezeDeep(pluginSource);
+      const result = runner(
+        buildPluginApi(plugin),
+        freezeDeep(clonePlain(manifest)),
+        pluginSource
+      );
       if (typeof result === "function") {{
         cleanup = result;
       }}
     }}
+    }} catch (error) {{
+      document.querySelectorAll(`[data-amazify-plugin-id="${{cssEscape(pluginId)}}"], [data-amazify-style-id="${{cssEscape(pluginId)}}"]`).forEach((node) => node.remove());
+      throw error;
+    }}
 
-    state.mountedPlugins.set(pluginId, {{ cleanup }});
+    NATIVE_MAP_SET(state.mountedPlugins, pluginId, {{ cleanup }});
   }}
 
   function unmountPlugin(pluginId) {{
-    const mounted = state.mountedPlugins.get(pluginId);
+    const mounted = NATIVE_MAP_GET(state.mountedPlugins, pluginId);
     if (mounted && typeof mounted.cleanup === "function") {{
       try {{
         mounted.cleanup();
@@ -1231,26 +1533,27 @@ def build_runtime_script(
       }}
     }}
     document.querySelectorAll(`[data-amazify-plugin-id="${{cssEscape(pluginId)}}"], [data-amazify-style-id="${{cssEscape(pluginId)}}"]`).forEach((node) => node.remove());
-    state.mountedPlugins.delete(pluginId);
+    NATIVE_MAP_DELETE(state.mountedPlugins, pluginId);
   }}
 
   function syncPlugins(pluginList) {{
-    const incoming = new Map();
-    for (const plugin of pluginList || []) {{
+    const incoming = new NATIVE_MAP();
+    const plugins = NATIVE_ARRAY_IS_ARRAY(pluginList) ? pluginList : [];
+    for (let index = 0; index < plugins.length; index += 1) {{
+      const plugin = plugins[index];
       if (!plugin || !plugin.manifest || !plugin.manifest.id) continue;
-      incoming.set(plugin.manifest.id, plugin);
+      NATIVE_MAP_SET(incoming, plugin.manifest.id, plugin);
     }}
-    for (const pluginId of state.mountedPlugins.keys()) {{
-      const next = incoming.get(pluginId);
+    const mountedPluginIds = mapKeysSnapshot(state.mountedPlugins);
+    for (let index = 0; index < mountedPluginIds.length; index += 1) {{
+      const pluginId = mountedPluginIds[index];
+      const next = NATIVE_MAP_GET(incoming, pluginId);
       if (!next || !next.enabled) {{
         unmountPlugin(pluginId);
       }}
     }}
     state.plugins = incoming;
-    if (window.Amazify) {{
-      window.Amazify.plugins = state.plugins;
-    }}
-    for (const plugin of incoming.values()) {{
+    NATIVE_MAP_FOR_EACH(incoming, (plugin) => {{
       if (plugin.enabled) {{
         try {{
           mountPlugin(plugin);
@@ -1259,7 +1562,7 @@ def build_runtime_script(
           console.warn("[Amazify] Plugin mount failed", plugin.manifest.id, error);
         }}
       }}
-    }}
+    }});
     attachRoot();
     if (state.activePanel) {{
       renderPanel();
@@ -1267,16 +1570,15 @@ def build_runtime_script(
   }}
 
   function syncCatalog(pluginList, error = "") {{
-    const incoming = new Map();
-    for (const plugin of pluginList || []) {{
+    const incoming = new NATIVE_MAP();
+    const plugins = NATIVE_ARRAY_IS_ARRAY(pluginList) ? pluginList : [];
+    for (let index = 0; index < plugins.length; index += 1) {{
+      const plugin = plugins[index];
       if (!plugin || !plugin.manifest || !plugin.manifest.id) continue;
-      incoming.set(plugin.manifest.id, plugin);
+      NATIVE_MAP_SET(incoming, plugin.manifest.id, plugin);
     }}
     state.catalogPlugins = incoming;
     state.catalogError = error || "";
-    if (window.Amazify) {{
-      window.Amazify.catalogPlugins = state.catalogPlugins;
-    }}
     if (state.activePanel) {{
       renderPanel();
     }}
@@ -1301,61 +1603,47 @@ def build_runtime_script(
     return String(value).replace(/["\\\\]/g, "\\\\$&");
   }}
 
-  const bridge = {{
-    getState: refreshFromBridge,
-    command: async (name, payload = {{}}) => bridgeCommand(name, payload)
-  }};
-
-  window.Amazify = {{
+  const publicRuntime = NATIVE_FREEZE({{
     version: VERSION,
-    plugins: state.plugins,
-    catalogPlugins: state.catalogPlugins,
-    ui: {{
-      openMarketplace: () => openPanel("marketplace"),
-      openSettings: () => openPanel("settings"),
-      closePanel,
-      addHeaderAction: (pluginId, label, onClick) => {{
-        attachRoot();
-        const action = document.createElement("button");
-        action.type = "button";
-        action.className = "amazify-plugin-action";
-        action.dataset.amazifyPluginId = pluginId;
-        action.textContent = label;
-        action.addEventListener("click", (event) => {{
-          event.stopPropagation();
-          if (onClick) onClick(event);
-        }});
-        state.actionHost.appendChild(action);
-        return action;
-      }}
-    }},
-    assets: {{
-      list: (pluginId) => listPluginAssets(pluginId),
-      get: (pluginId, nameOrPath) => pluginAsset(pluginId, nameOrPath),
-      url: (pluginId, nameOrPath) => {{
-        const asset = pluginAsset(pluginId, nameOrPath);
-        return asset ? asset.dataUri : "";
-      }}
-    }},
-    bridge,
-    mountPlugin,
-    unmountPlugin,
-    syncPlugins,
-    receiveNativeResult,
-    cleanup: () => {{
-      if (state.observer) {{
-        state.observer.disconnect();
-      }}
-      for (const pluginId of [...state.mountedPlugins.keys()]) {{
-        unmountPlugin(pluginId);
-      }}
-      removeRuntimeSurfaces();
-      const runtimeStyle = document.getElementById(RUNTIME_STYLE_ID);
-      if (runtimeStyle) runtimeStyle.remove();
-      document.removeEventListener("click", closeMenuOnOutsideClick, true);
+    plugins: publicPluginLookup
+  }});
+
+  function cleanupRuntime() {{
+    if (!runtimeActive) return;
+    runtimeActive = false;
+    NATIVE_REMOVE_EVENT_LISTENER(window, CLEANUP_EVENT, cleanupRuntime);
+    if (state.observer) {{
+      state.observer.disconnect();
+      state.observer = null;
+    }}
+    const nativeRequests = mapValuesSnapshot(state.nativeRequests);
+    for (let index = 0; index < nativeRequests.length; index += 1) {{
+      const request = nativeRequests[index];
+      clearTimeout(request.timeout);
+      request.reject(new Error("Amazify runtime stopped"));
+    }}
+    NATIVE_MAP_CLEAR(state.nativeRequests);
+    const mountedPluginIds = mapKeysSnapshot(state.mountedPlugins);
+    for (let index = 0; index < mountedPluginIds.length; index += 1) {{
+      unmountPlugin(mountedPluginIds[index]);
+    }}
+    removeRuntimeSurfaces();
+    const runtimeStyle = document.getElementById(RUNTIME_STYLE_ID);
+    if (runtimeStyle) runtimeStyle.remove();
+    document.removeEventListener("click", closeMenuOnOutsideClick, true);
+    if (window.Amazify === publicRuntime) {{
       delete window.Amazify;
     }}
-  }};
+  }}
+
+  NATIVE_ADD_EVENT_LISTENER(window, CLEANUP_EVENT, cleanupRuntime);
+  try {{ delete window.Amazify; }} catch (_error) {{}}
+  NATIVE_DEFINE_PROPERTY(window, "Amazify", {{
+    value: publicRuntime,
+    enumerable: false,
+    configurable: true,
+    writable: false
+  }});
 
   installRuntimeStyle();
   removeRuntimeSurfaces();
@@ -1374,10 +1662,7 @@ def build_runtime_script(
 def build_cleanup_script() -> str:
     return """
 (() => {
-  if (window.Amazify && typeof window.Amazify.cleanup === "function") {
-    window.Amazify.cleanup();
-    return true;
-  }
+  window.dispatchEvent(new Event("amazify-runtime-cleanup-request"));
   document.querySelectorAll('[data-amazify-root="true"], [data-amazify-panel="true"], [data-amazify-menu="true"], [data-amazify-plugin-id], [data-amazify-style-id]').forEach((node) => node.remove());
   const runtimeStyle = document.getElementById("amazify-runtime-style");
   if (runtimeStyle) runtimeStyle.remove();

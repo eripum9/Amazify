@@ -27,3 +27,25 @@ include = ["amazify*"]
 
 [tool.setuptools.package-data]
 amazify = ["assets/*.png"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["amazify"]
+relative_files = true
+omit = [
+  "amazify/__main__.py",
+  "amazify/window_identity.py",
+]
+
+[tool.coverage.report]
+fail_under = 45
+show_missing = true
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"

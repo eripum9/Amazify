@@ -1,25 +1,51 @@
 from __future__ import annotations
 
+import ctypes
 import json
 import logging
+import math
+import ntpath
 import os
 import re
 import subprocess
-import ctypes
+import threading
+import time
 import uuid
+from ctypes import wintypes
 from dataclasses import dataclass
 from pathlib import Path
-from ctypes import wintypes
+from typing import Any
 
 from .config import DEFAULT_KNOWN_AUMID
 
-
 LOG = logging.getLogger(__name__)
 DEVTOOLS_PORT_RE = re.compile(r"^--remote-debugging-port=(\d+)$")
+AMAZON_PACKAGE_NAME = "AmazonMobileLLC.AmazonMusic"
+AMAZON_PACKAGE_PUBLISHER_ID = "kc6t79cpj4tp0"
+AMAZON_EXECUTABLE_NAMES = frozenset({"amazon music.exe", "amazonmusic.exe"})
+AMAZON_PACKAGE_DIRECTORY_RE = re.compile(
+    rf"^{re.escape(AMAZON_PACKAGE_NAME)}_"
+    r"(?P<version>\d{1,5}(?:\.\d{1,5}){3})_"
+    r"(?:x86|x64|arm|arm64|neutral)_"
+    rf"[A-Za-z0-9.-]{{0,30}}_{AMAZON_PACKAGE_PUBLISHER_ID}$",
+    re.IGNORECASE,
+)
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1"})
+EXPECTED_LISTENER_TTL_SECONDS = 60.0
+_EXPECTED_LISTENERS_LOCK = threading.RLock()
 
 
 class LaunchError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class _ExpectedListenerIdentity:
+    creation_time: float
+    expires_at: float
+
+
+_EXPECTED_LISTENERS: dict[int, dict[int, _ExpectedListenerIdentity]] = {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,7 +55,9 @@ class LaunchCandidate:
     label: str
 
 
-def discover_launch_candidates(manual_launcher: str | None = None) -> list[LaunchCandidate]:
+def discover_launch_candidates(
+    manual_launcher: str | None = None,
+) -> list[LaunchCandidate]:
     candidates: list[LaunchCandidate] = []
     seen: set[tuple[str, str]] = set()
 
@@ -52,7 +80,9 @@ def discover_launch_candidates(manual_launcher: str | None = None) -> list[Launc
     return candidates
 
 
-def runtime_launch_candidates(manual_launcher: str | None = None) -> list[LaunchCandidate]:
+def runtime_launch_candidates(
+    manual_launcher: str | None = None,
+) -> list[LaunchCandidate]:
     """Return the minimal launch set used by the latency-sensitive runtime path."""
     if manual_launcher:
         return [_manual_candidate(manual_launcher)]
@@ -114,28 +144,30 @@ def focus_amazon_music() -> None:
     _activate_aumid(DEFAULT_KNOWN_AUMID, "")
 
 
-def launch_candidate(candidate: LaunchCandidate, devtools_port: int) -> None:
+def launch_candidate(candidate: LaunchCandidate, devtools_port: int) -> int | None:
     args = devtools_args(devtools_port)
     LOG.info("Launching %s with DevTools port %s", candidate.label, devtools_port)
     if candidate.kind == "exe":
-        subprocess.Popen(
+        process = subprocess.Popen(
             [candidate.value, *args],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             close_fds=True,
         )
-        return
+        process_id = _positive_process_id(getattr(process, "pid", None))
+        _remember_expected_listener(devtools_port, process_id)
+        return process_id
     if candidate.kind == "aumid":
-        _activate_aumid(candidate.value, " ".join(args))
-        return
+        process_id = _positive_process_id(
+            _activate_aumid(candidate.value, " ".join(args))
+        )
+        _remember_expected_listener(devtools_port, process_id)
+        return process_id
     raise LaunchError(f"Unsupported launch candidate kind: {candidate.kind}")
 
 
 def devtools_args(devtools_port: int) -> list[str]:
-    return [
-        f"--remote-debugging-port={devtools_port}",
-        "--remote-allow-origins=*",
-    ]
+    return [f"--remote-debugging-port={devtools_port}"]
 
 
 def _append_unique(
@@ -217,14 +249,16 @@ $rows | ConvertTo-Json -Depth 4
     return candidates
 
 
-def _activate_aumid(app_id: str, args: str) -> None:
+def _activate_aumid(app_id: str, args: str) -> int | None:
     if os.name == "nt":
         try:
-            _activate_aumid_native(app_id, args)
-            return
+            return _activate_aumid_native(app_id, args)
         except (OSError, RuntimeError):
-            LOG.debug("Native AUMID activation failed; using PowerShell fallback", exc_info=True)
-    _activate_aumid_powershell(app_id, args)
+            LOG.debug(
+                "Native AUMID activation failed; using PowerShell fallback",
+                exc_info=True,
+            )
+    return _activate_aumid_powershell(app_id, args)
 
 
 class _GUID(ctypes.Structure):
@@ -273,7 +307,9 @@ def _activate_aumid_native(app_id: str, args: str) -> int:
         )
         if hr < 0 or not instance.value:
             raise RuntimeError(f"CoCreateInstance failed: 0x{hr & 0xFFFFFFFF:08X}")
-        interface = ctypes.cast(instance, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p)))
+        interface = ctypes.cast(
+            instance, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))
+        )
         activate = ctypes.WINFUNCTYPE(
             ctypes.c_long,
             ctypes.c_void_p,
@@ -289,14 +325,18 @@ def _activate_aumid_native(app_id: str, args: str) -> int:
         return int(process_id.value)
     finally:
         if instance.value:
-            interface = ctypes.cast(instance, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p)))
-            release = ctypes.WINFUNCTYPE(wintypes.ULONG, ctypes.c_void_p)(interface.contents[2])
+            interface = ctypes.cast(
+                instance, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))
+            )
+            release = ctypes.WINFUNCTYPE(wintypes.ULONG, ctypes.c_void_p)(
+                interface.contents[2]
+            )
             release(instance)
         if should_uninitialize:
             ole32.CoUninitialize()
 
 
-def _activate_aumid_powershell(app_id: str, args: str) -> None:
+def _activate_aumid_powershell(app_id: str, args: str) -> int | None:
     script = f"""
 $ErrorActionPreference = 'Stop'
 $code = @"
@@ -357,6 +397,11 @@ Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue
     )
     if result.returncode != 0:
         raise LaunchError(result.stderr.strip() or result.stdout.strip())
+    for line in reversed(result.stdout.splitlines()):
+        process_id = _positive_process_id(line.strip())
+        if process_id is not None:
+            return process_id
+    return None
 
 
 def _run_powershell_json(script: str) -> object:
@@ -405,14 +450,215 @@ def _looks_like_amazon_music_start_app(name: str, app_id: str) -> bool:
 
 
 def _looks_like_amazon_music_process(name: str, executable: str) -> bool:
-    lowered_name = name.lower()
-    lowered_executable = executable.lower()
-    if lowered_name != "amazon music.exe":
+    lowered_name = name.casefold()
+    if lowered_name not in AMAZON_EXECUTABLE_NAMES:
         return False
-    return (
-        "amazonmobilellc.amazonmusic_" in lowered_executable
-        or lowered_executable.endswith("amazon music.exe")
+    return _is_exact_amazon_package_executable(executable)
+
+
+def validate_devtools_listener(port: int) -> None:
+    """Fail unless the selected loopback listener belongs to Amazon Music."""
+    try:
+        selected_port = int(port)
+    except (TypeError, ValueError) as exc:
+        raise LaunchError("DevTools listener port is invalid") from exc
+    if not 0 < selected_port <= 65535:
+        raise LaunchError("DevTools listener port is invalid")
+
+    try:
+        import psutil
+    except ImportError as exc:
+        raise LaunchError(
+            "psutil is required to verify the DevTools listener owner"
+        ) from exc
+
+    try:
+        connections = psutil.net_connections(kind="tcp")
+    except (OSError, psutil.Error) as exc:
+        raise LaunchError(
+            "Windows could not verify the Amazon Music DevTools listener owner"
+        ) from exc
+
+    listener_pids: set[int] = set()
+    for connection in connections:
+        if str(getattr(connection, "status", "")).upper() != "LISTEN":
+            continue
+        host, connection_port = _connection_address(getattr(connection, "laddr", None))
+        if connection_port != selected_port:
+            continue
+        if host not in LOOPBACK_HOSTS:
+            raise LaunchError(
+                f"DevTools port {selected_port} is listening on a non-loopback interface"
+            )
+        process_id = _positive_process_id(getattr(connection, "pid", None))
+        if process_id is None:
+            raise LaunchError(
+                f"Windows could not identify the owner of DevTools port {selected_port}"
+            )
+        listener_pids.add(process_id)
+
+    if not listener_pids:
+        raise LaunchError(
+            f"Windows could not find the listener owner for DevTools port {selected_port}"
+        )
+
+    with _EXPECTED_LISTENERS_LOCK:
+        now = time.monotonic()
+        expected = _EXPECTED_LISTENERS.get(selected_port, {})
+        expected_identities = {
+            process_id: identity
+            for process_id, identity in expected.items()
+            if identity.expires_at >= now
+        }
+        if expected:
+            if expected_identities:
+                _EXPECTED_LISTENERS[selected_port] = expected_identities
+            else:
+                _EXPECTED_LISTENERS.pop(selected_port, None)
+
+    for process_id in listener_pids:
+        if not _trusted_listener_process(psutil, process_id, expected_identities):
+            raise LaunchError(
+                f"DevTools port {selected_port} is owned by a non-Amazon process"
+            )
+
+
+def _trusted_listener_process(
+    psutil_module: Any,
+    process_id: int,
+    expected_identities: dict[int, _ExpectedListenerIdentity],
+) -> bool:
+    try:
+        process = psutil_module.Process(process_id)
+        chain = [process, *process.parents()[:6]]
+    except (OSError, psutil_module.Error):
+        return False
+
+    for item in chain:
+        try:
+            item_pid = _positive_process_id(getattr(item, "pid", None))
+            executable = str(item.exe() or "")
+        except (OSError, psutil_module.Error):
+            executable = ""
+            item_pid = _positive_process_id(getattr(item, "pid", None))
+        if item_pid is not None:
+            expected_identity = expected_identities.get(item_pid)
+            if expected_identity is not None:
+                creation_time = _process_creation_time(psutil_module, item)
+                if creation_time == expected_identity.creation_time:
+                    return True
+        if _is_exact_amazon_package_executable(executable):
+            return True
+    return False
+
+
+def _is_exact_amazon_package_executable(path: str) -> bool:
+    if not path or not ntpath.isabs(path):
+        return False
+    normalized = ntpath.normpath(path.replace("/", "\\"))
+    if ntpath.basename(normalized).casefold() not in AMAZON_EXECUTABLE_NAMES:
+        return False
+    package_directory = ntpath.dirname(normalized)
+    match = AMAZON_PACKAGE_DIRECTORY_RE.fullmatch(
+        ntpath.basename(package_directory)
     )
+    if match is None:
+        return False
+    if any(int(component) > 65535 for component in match["version"].split(".")):
+        return False
+    windows_apps_root = _canonical_windows_path(ntpath.dirname(package_directory))
+    protected_roots = {
+        _canonical_windows_path(root)
+        for root in _protected_windows_apps_roots()
+        if ntpath.isabs(root)
+    }
+    return windows_apps_root in protected_roots
+
+
+def _protected_windows_apps_roots() -> frozenset[str]:
+    try:
+        import winreg
+    except ImportError:
+        return frozenset()
+
+    roots: set[str] = set()
+    access_modes = [winreg.KEY_READ]
+    wow64_access = getattr(winreg, "KEY_WOW64_64KEY", 0)
+    if wow64_access:
+        access_modes.insert(0, winreg.KEY_READ | wow64_access)
+    for access in access_modes:
+        try:
+            with winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SOFTWARE\Microsoft\Windows\CurrentVersion",
+                access=access,
+            ) as key:
+                program_files, _ = winreg.QueryValueEx(key, "ProgramFilesDir")
+        except OSError:
+            continue
+        if isinstance(program_files, str) and ntpath.isabs(program_files):
+            roots.add(ntpath.join(program_files, "WindowsApps"))
+    return frozenset(roots)
+
+
+def _canonical_windows_path(path: str) -> str:
+    return ntpath.normcase(ntpath.abspath(ntpath.normpath(path)))
+
+
+def _connection_address(address: object) -> tuple[str, int]:
+    if address is None:
+        return "", 0
+    host = getattr(address, "ip", None)
+    port = getattr(address, "port", None)
+    if host is None and isinstance(address, (tuple, list)) and len(address) >= 2:
+        host, port = address[0], address[1]
+    try:
+        return str(host or "").lower(), int(port or 0)
+    except (TypeError, ValueError):
+        return "", 0
+
+
+def _positive_process_id(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        process_id = int(value)
+    except (TypeError, ValueError):
+        return None
+    return process_id if process_id > 0 else None
+
+
+def _remember_expected_listener(port: int, process_id: int | None) -> None:
+    if process_id is None:
+        return
+    try:
+        import psutil
+    except ImportError:
+        return
+    try:
+        process = psutil.Process(process_id)
+    except (OSError, psutil.Error):
+        return
+    creation_time = _process_creation_time(psutil, process)
+    if creation_time is None:
+        return
+    with _EXPECTED_LISTENERS_LOCK:
+        _EXPECTED_LISTENERS.setdefault(int(port), {})[process_id] = (
+            _ExpectedListenerIdentity(
+                creation_time=creation_time,
+                expires_at=time.monotonic() + EXPECTED_LISTENER_TTL_SECONDS,
+            )
+        )
+
+
+def _process_creation_time(psutil_module: Any, process: Any) -> float | None:
+    try:
+        creation_time = float(process.create_time())
+    except (OSError, TypeError, ValueError, psutil_module.Error):
+        return None
+    if creation_time <= 0 or not math.isfinite(creation_time):
+        return None
+    return creation_time
 
 
 def _ps_quote(value: str) -> str:

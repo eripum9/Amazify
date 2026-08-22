@@ -1,21 +1,45 @@
 from __future__ import annotations
 
+import hmac
 import json
 import logging
+import secrets
+import threading
 from typing import Any
 
 from .devtools import DevToolsClient, DevToolsError
 from .plugin_manager import PluginError, PluginManager
 
-
 LOG = logging.getLogger(__name__)
 BINDING_NAME = "AmazifyNativeCommand"
+MAX_NATIVE_REQUEST_BYTES = 16 * 1024
+ALLOWED_COMMANDS = frozenset(
+    {
+        "state.get",
+        "plugins.enable",
+        "plugins.disable",
+        "catalog.refresh",
+        "plugins.install",
+        "plugins.disableAll",
+    }
+)
 
 
 class NativeBindingBridge:
     def __init__(self, client: DevToolsClient, plugin_manager: PluginManager) -> None:
         self.client = client
         self.plugin_manager = plugin_manager
+        self._session_nonce = secrets.token_urlsafe(32)
+        self._response_callback_name = f"__amazifyNativeResult_{secrets.token_hex(18)}"
+        self._operation_lock = threading.RLock()
+
+    @property
+    def session_nonce(self) -> str:
+        return self._session_nonce
+
+    @property
+    def response_callback_name(self) -> str:
+        return self._response_callback_name
 
     def install(self) -> None:
         self.client.call("Runtime.enable")
@@ -33,22 +57,36 @@ class NativeBindingBridge:
             return
         request_id = ""
         try:
-            payload = json.loads(str(params.get("payload", "{}")))
+            raw_payload = str(params.get("payload", "{}"))
+            if len(raw_payload.encode("utf-8")) > MAX_NATIVE_REQUEST_BYTES:
+                raise ValueError("Native binding payload is too large")
+            payload = json.loads(raw_payload)
             if not isinstance(payload, dict):
-                raise ValueError("Native binding payload must be an object")
+                raise TypeError("Native binding payload must be an object")
             request_id = str(payload.get("id", ""))
+            supplied_nonce = str(payload.get("sessionNonce", ""))
+            if not supplied_nonce or not hmac.compare_digest(
+                supplied_nonce, self._session_nonce
+            ):
+                raise PluginError("Native command authentication failed")
             name = str(payload.get("name", ""))
             command_payload = payload.get("payload", {})
             if not isinstance(command_payload, dict):
-                command_payload = {}
-            result = self._handle_command(name, command_payload)
-        except Exception as exc:
-            LOG.exception("Native binding command failed")
+                raise TypeError("Native command payload must be an object")
+            with self._operation_lock:
+                result = self._handle_command(name, command_payload)
+        except (PluginError, TypeError, ValueError) as exc:
+            LOG.warning("Rejected native binding command: %s", exc)
             result = {"ok": False, "error": str(exc)}
+        except Exception:
+            LOG.exception("Native binding command failed")
+            result = {"ok": False, "error": "Native command failed"}
         if request_id:
             self._reply(request_id, result)
 
     def _handle_command(self, name: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if name not in ALLOWED_COMMANDS:
+            raise PluginError(f"Native command not allowed: {name}")
         if name == "state.get":
             return self._state_payload()
         if name == "plugins.enable":
@@ -65,7 +103,7 @@ class NativeBindingBridge:
         if name == "plugins.disableAll":
             self.plugin_manager.disable_all()
             return self._state_payload()
-        raise PluginError(f"Unknown native command: {name}")
+        raise PluginError(f"Native command not allowed: {name}")
 
     def _state_payload(self, *, force_catalog_refresh: bool = False) -> dict[str, Any]:
         catalog = (
@@ -86,11 +124,9 @@ class NativeBindingBridge:
     def _reply(self, request_id: str, result: dict[str, Any]) -> None:
         expression = (
             "(() => {"
-            " if (window.Amazify && typeof window.Amazify.receiveNativeResult === 'function') {"
-            f" window.Amazify.receiveNativeResult({json.dumps(request_id)}, {json.dumps(result)});"
-            " return true;"
-            " }"
-            " return false;"
+            f" const callback = window[{json.dumps(self._response_callback_name)}];"
+            " if (typeof callback !== 'function') return false;"
+            f" return callback({json.dumps(request_id)}, {json.dumps(result)});"
             "})()"
         )
         try:

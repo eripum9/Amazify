@@ -1,10 +1,12 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "plugins": [
     {
       "id": "amazify.true-big-mode",
-      "channel": "stock",
-      "sourceUrl": "https://github.com/eripum9/Amazify/tree/main/sample_plugins/amazify.true-big-mode",
+      "trust": "stock",
+      "repository": "eripum9/Amazify",
+      "sourceCommit": "b57c1987748fe8044ad0d3e96fd1af042c04096e",
+      "pluginRoot": "sample_plugins/amazify.true-big-mode",
       "manifest": {
         "id": "amazify.true-big-mode",
         "name": "True Big Mode",
@@ -13,8 +15,15 @@
         "type": "ui",
         "description": "Turns Amazon Music Big Mode into a cleaner full-screen lyrics view with album-art exit behavior.",
         "entry": "plugin.js",
-        "styles": ["style.css"],
-        "permissions": ["dom-read", "dom-write", "dom-style"],
+        "styles": [
+          "style.css"
+        ],
+        "assets": {},
+        "permissions": [
+          "dom-read",
+          "dom-write",
+          "dom-style"
+        ],
         "amazonMusic": {
           "testedAppVersions": [],
           "target": "desktop"
@@ -23,22 +32,27 @@
       "files": [
         {
           "path": "manifest.json",
-          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.true-big-mode/manifest.json"
+          "sha256": "14eeaa369ecb6938c801c10c0515209b1fe1931af386ecc2a20f55f3d027126c",
+          "size": 426
         },
         {
           "path": "plugin.js",
-          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.true-big-mode/plugin.js"
+          "sha256": "be9a2d4a7f5888e69a2851725dc01c72041ee9fc021ed9beef9a25deb825a10b",
+          "size": 59334
         },
         {
           "path": "style.css",
-          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.true-big-mode/style.css"
+          "sha256": "af44e88810e47026af7334bdb8a2a493104cdf7601765fb1704a313ccbf13d55",
+          "size": 31219
         }
       ]
     },
     {
       "id": "amazify.theme.signal-studio",
-      "channel": "stock",
-      "sourceUrl": "https://github.com/eripum9/Amazify/tree/main/sample_plugins/amazify.theme.signal-studio",
+      "trust": "stock",
+      "repository": "eripum9/Amazify",
+      "sourceCommit": "b57c1987748fe8044ad0d3e96fd1af042c04096e",
+      "pluginRoot": "sample_plugins/amazify.theme.signal-studio",
       "manifest": {
         "id": "amazify.theme.signal-studio",
         "name": "Signal Studio",
@@ -47,12 +61,18 @@
         "type": "theme",
         "description": "Rebuilds Amazon Music as a tactile studio interface with a navigation rail, editorial library views, reactive ambience, and a floating transport.",
         "entry": "plugin.js",
-        "styles": ["theme.css"],
+        "styles": [
+          "theme.css"
+        ],
         "assets": {
           "signal-font": "assets/space-grotesk.woff2",
           "signal-grain": "assets/grain.svg"
         },
-        "permissions": ["dom-read", "dom-write", "dom-style"],
+        "permissions": [
+          "dom-read",
+          "dom-write",
+          "dom-style"
+        ],
         "amazonMusic": {
           "testedAppVersions": [],
           "target": "desktop"
@@ -61,27 +81,33 @@
       "files": [
         {
           "path": "manifest.json",
-          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.theme.signal-studio/manifest.json"
+          "sha256": "6318bff277e07792a78700bf12c7a9b96c88efefbcc69ab4cf0f03a62552c226",
+          "size": 591
         },
         {
           "path": "plugin.js",
-          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.theme.signal-studio/plugin.js"
+          "sha256": "454c7fba572afdce5e743832d3b2e7790cbe2f07f20145c8bed3a310ad43917f",
+          "size": 12287
         },
         {
           "path": "theme.css",
-          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.theme.signal-studio/theme.css"
+          "sha256": "efbae693b643c74f0aad57a68a28ad1a4e04bd7ef18956fbc9fc7d483620e72f",
+          "size": 106679
         },
         {
           "path": "assets/space-grotesk.woff2",
-          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.theme.signal-studio/assets/space-grotesk.woff2"
+          "sha256": "8e085aa438094f11487a836652edd5c054fa6a96f63fc7c282105ee3a4b08c07",
+          "size": 49256
         },
         {
           "path": "assets/grain.svg",
-          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.theme.signal-studio/assets/grain.svg"
+          "sha256": "bfc2f481473df7aae87b93563bdc48cd20b7d1496217ecc97bd5e1a50a7a320a",
+          "size": 807
         },
         {
           "path": "OFL.txt",
-          "url": "https://raw.githubusercontent.com/eripum9/Amazify/main/sample_plugins/amazify.theme.signal-studio/OFL.txt"
+          "sha256": "18a4de52385f6b988782639d5d0cc1326e5a8c2de9a7f01d7b20d9aedcc60943",
+          "size": 4401
         }
       ]
     }

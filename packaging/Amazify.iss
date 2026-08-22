@@ -36,10 +36,10 @@ Source: "..\dist\{#AppWindowedExeDir}\*"; DestDir: "{app}\{#AppWindowedExeDir}";
 
 [InstallDelete]
 Type: files; Name: "{app}\{#AppWindowedExeName}"
-Type: files; Name: "{group}\Amazon Music (Amazify).lnk"
-Type: files; Name: "{userprograms}\Amazon Music (Amazify).lnk"
-Type: files; Name: "{userdesktop}\Amazon Music (Amazify).lnk"
-Type: files; Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\Amazon Music (Amazify).lnk"
+Type: files; Name: "{group}\Amazon Music (Amazify).lnk"; Check: not IsCiSmoke
+Type: files; Name: "{userprograms}\Amazon Music (Amazify).lnk"; Check: not IsCiSmoke
+Type: files; Name: "{userdesktop}\Amazon Music (Amazify).lnk"; Check: not IsCiSmoke
+Type: files; Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\Amazon Music (Amazify).lnk"; Check: not IsCiSmoke
 
 [Tasks]
 Name: "startupdaemon"; Description: "Start the Amazify daemon when I sign in"; GroupDescription: "Background service:"; Flags: checkedonce
@@ -47,20 +47,20 @@ Name: "desktopicon"; Description: "Create a Desktop shortcut"; GroupDescription:
 Name: "taskbaricon"; Description: "Pin Amazon Music (Amazify) to the taskbar"; GroupDescription: "Additional shortcuts:"
 
 [Icons]
-Name: "{group}\Amazon Music (Amazify)"; Filename: "{app}\{#AppWindowedExePath}"; Parameters: "run"; WorkingDir: "{app}\{#AppWindowedExeDir}"; IconFilename: "{app}\{#AppWindowedExePath}"; Comment: "Launch Amazon Music through Amazify"; AppUserModelID: "{#AmazifyAppUserModelID}"
-Name: "{group}\Amazify CLI"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "Open the Amazify command line"
-Name: "{userdesktop}\Amazon Music (Amazify)"; Filename: "{app}\{#AppWindowedExePath}"; Parameters: "run"; WorkingDir: "{app}\{#AppWindowedExeDir}"; IconFilename: "{app}\{#AppWindowedExePath}"; Comment: "Launch Amazon Music through Amazify"; AppUserModelID: "{#AmazifyAppUserModelID}"; Tasks: desktopicon
+Name: "{group}\Amazon Music (Amazify)"; Filename: "{app}\{#AppWindowedExePath}"; Parameters: "run"; WorkingDir: "{app}\{#AppWindowedExeDir}"; IconFilename: "{app}\{#AppWindowedExePath}"; Comment: "Launch Amazon Music through Amazify"; AppUserModelID: "{#AmazifyAppUserModelID}"; Check: not IsCiSmoke
+Name: "{group}\Amazify CLI"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "Open the Amazify command line"; Check: not IsCiSmoke
+Name: "{userdesktop}\Amazon Music (Amazify)"; Filename: "{app}\{#AppWindowedExePath}"; Parameters: "run"; WorkingDir: "{app}\{#AppWindowedExeDir}"; IconFilename: "{app}\{#AppWindowedExePath}"; Comment: "Launch Amazon Music through Amazify"; AppUserModelID: "{#AmazifyAppUserModelID}"; Tasks: desktopicon; Check: not IsCiSmoke
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Amazify"; ValueData: """{app}\{#AppWindowedExePath}"" daemon start"; Flags: uninsdeletevalue; Tasks: startupdaemon
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Amazify"; ValueData: """{app}\{#AppWindowedExePath}"" daemon start"; Flags: uninsdeletevalue; Tasks: startupdaemon; Check: not IsCiSmoke
 
 [Run]
-Filename: "{app}\{#AppWindowedExePath}"; Parameters: "shortcuts install --taskbar --target-exe ""{app}\{#AppWindowedExePath}"""; Flags: runhidden waituntilterminated; Tasks: taskbaricon
-Filename: "{app}\{#AppWindowedExePath}"; Parameters: "daemon start"; Flags: runhidden waituntilterminated
+Filename: "{app}\{#AppWindowedExePath}"; Parameters: "shortcuts install --taskbar --target-exe ""{app}\{#AppWindowedExePath}"""; Flags: runhidden waituntilterminated; Tasks: taskbaricon; Check: not IsCiSmoke
+Filename: "{app}\{#AppWindowedExePath}"; Parameters: "daemon start"; Flags: runhidden waituntilterminated; Check: not IsCiSmoke
 
 [UninstallRun]
-Filename: "{app}\{#AppWindowedExePath}"; Parameters: "daemon stop"; Flags: runhidden waituntilterminated; RunOnceId: "StopDaemon"
-Filename: "{app}\{#AppWindowedExePath}"; Parameters: "shortcuts remove"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveShortcuts"
+Filename: "{app}\{#AppWindowedExePath}"; Parameters: "daemon stop"; Flags: runhidden waituntilterminated; RunOnceId: "StopDaemon"; Check: not IsCiSmoke
+Filename: "{app}\{#AppWindowedExePath}"; Parameters: "shortcuts remove"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveShortcuts"; Check: not IsCiSmoke
 
 [Code]
 { ------------------------------------------------------------------ }
@@ -69,6 +69,23 @@ Filename: "{app}\{#AppWindowedExePath}"; Parameters: "shortcuts remove"; Flags: 
 
 const
   EnvironmentRegKey = 'Environment';
+
+function IsCiSmoke(): Boolean;
+var
+  Index: Integer;
+  Argument: string;
+begin
+  Result := False;
+  for Index := 1 to ParamCount do
+  begin
+    Argument := Uppercase(ParamStr(Index));
+    if (Argument = '/CI-SMOKE') or (Argument = '/CI-SMOKE=1') then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+end;
 
 { Return True when InstallPath is not already present in the user PATH. }
 function NeedsAddPath(const InstallPath: string): Boolean;
@@ -168,6 +185,7 @@ var
   ResultCode: Integer;
 begin
   Result := '';
+  if IsCiSmoke then Exit;
   DaemonExe := ExpandConstant('{app}\{#AppWindowedExePath}');
   if not FileExists(DaemonExe) then Exit;
 
@@ -188,7 +206,7 @@ end;
 { Hook: add the install directory to user PATH after installation. }
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if CurStep = ssPostInstall then
+  if (CurStep = ssPostInstall) and (not IsCiSmoke) then
   begin
     AddToUserPath(ExpandConstant('{app}'));
     if not WizardIsTaskSelected('startupdaemon') then
@@ -200,6 +218,6 @@ end;
 { Hook: remove the install directory from user PATH on uninstall. }
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  if CurUninstallStep = usPostUninstall then
+  if (CurUninstallStep = usPostUninstall) and (not IsCiSmoke) then
     RemoveFromUserPath(ExpandConstant('{app}'));
 end;

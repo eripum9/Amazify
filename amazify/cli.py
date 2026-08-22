@@ -16,7 +16,12 @@ from pathlib import Path
 
 from .bridge import LocalBridge
 from .config import RuntimeConfig, find_free_local_port
-from .devtools import DevToolsClient, DevToolsConnectionClosed, DevToolsError, DevToolsHttp
+from .devtools import (
+    DevToolsClient,
+    DevToolsConnectionClosed,
+    DevToolsError,
+    DevToolsHttp,
+)
 from .launcher import (
     LaunchError,
     amazon_music_is_running,
@@ -31,7 +36,6 @@ from .native_bridge import NativeBindingBridge
 from .plugin_manager import PluginManager
 from .runtime import build_cleanup_script, build_runtime_script
 from .window_identity import apply_amazify_window_identity
-
 
 LOG = logging.getLogger(__name__)
 
@@ -119,7 +123,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     daemon_parser = subparsers.add_parser("daemon", help="Manage the Amazify daemon.")
     daemon_subparsers = daemon_parser.add_subparsers(dest="daemon_action")
-    daemon_start_parser = daemon_subparsers.add_parser("start", help="Start the daemon.")
+    daemon_start_parser = daemon_subparsers.add_parser(
+        "start", help="Start the daemon."
+    )
     add_launch_arguments(daemon_start_parser)
     daemon_subparsers.add_parser("stop", help="Stop the daemon.")
     daemon_subparsers.add_parser("status", help="Show daemon status.")
@@ -139,7 +145,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Install or remove Amazify launch shortcuts.",
     )
     shortcuts_subparsers = shortcuts_parser.add_subparsers(dest="shortcuts_action")
-    shortcuts_install = shortcuts_subparsers.add_parser("install", help="Install shortcuts.")
+    shortcuts_install = shortcuts_subparsers.add_parser(
+        "install", help="Install shortcuts."
+    )
     shortcuts_install.add_argument("--start-menu", action="store_true")
     shortcuts_install.add_argument("--desktop", action="store_true")
     shortcuts_install.add_argument("--taskbar", action="store_true")
@@ -174,6 +182,18 @@ def add_launch_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def create_plugin_manager(config: RuntimeConfig) -> PluginManager:
+    allow_local_catalog = bool(
+        not getattr(sys, "frozen", False)
+        and os.environ.get("AMAZIFY_ALLOW_LOCAL_CATALOG") == "1"
+    )
+    return PluginManager(
+        config.plugin_dir,
+        config.plugin_state_file,
+        allow_local_catalog=allow_local_catalog,
+    )
+
+
 def run(args: argparse.Namespace) -> int:
     config = RuntimeConfig.create(
         devtools_port=getattr(args, "devtools_port", None),
@@ -201,7 +221,7 @@ def run_foreground(
     log_file = setup_logging(config.log_dir, verbose=args.verbose)
     LOG.info("Amazify %sstarting. Logs: %s", "daemon " if daemon_mode else "", log_file)
 
-    plugin_manager = PluginManager(config.plugin_dir, config.plugin_state_file)
+    plugin_manager = create_plugin_manager(config)
 
     bridge = LocalBridge(
         port=config.bridge_port,
@@ -250,7 +270,9 @@ def run_foreground(
         emit(f"Logs: {log_file}")
 
         if getattr(args, "once", False):
-            LOG.warning("--once exits immediately; bridge-backed UI commands will stop working.")
+            LOG.warning(
+                "--once exits immediately; bridge-backed UI commands will stop working."
+            )
             return 0
 
         last_heartbeat = 0.0
@@ -270,7 +292,10 @@ def run_foreground(
                     time.sleep(0.5)
                     continue
                 raise
-            if daemon_mode and time.monotonic() - last_heartbeat >= DAEMON_HEARTBEAT_SECONDS:
+            if (
+                daemon_mode
+                and time.monotonic() - last_heartbeat >= DAEMON_HEARTBEAT_SECONDS
+            ):
                 last_heartbeat = time.monotonic()
                 mark_daemon_state(
                     config,
@@ -317,7 +342,8 @@ def inject_connection(
     client = DevToolsClient(connection.target)
     try:
         client.connect()
-        NativeBindingBridge(client, plugin_manager).install()
+        native_bridge = NativeBindingBridge(client, plugin_manager)
+        native_bridge.install()
         probe = client.probe_amazon_music()
         remember_devtools_port(config)
         LOG.info(
@@ -334,16 +360,21 @@ def inject_connection(
                         tagged_windows,
                     )
                 else:
-                    LOG.info("No native Amazon Music window was tagged for Amazify identity")
+                    LOG.info(
+                        "No native Amazon Music window was tagged for Amazify identity"
+                    )
             except Exception as exc:
-                LOG.debug("Unable to apply Amazify taskbar identity: %s", exc, exc_info=True)
-        client.evaluate(build_cleanup_script())
+                LOG.debug(
+                    "Unable to apply Amazify taskbar identity: %s", exc, exc_info=True
+                )
         result = client.evaluate(
             build_runtime_script(
                 bridge_url=config.bridge_url,
                 bridge_token=config.bridge_token,
                 plugins=plugin_manager.runtime_snapshot(),
                 catalog_plugins=plugin_manager.cached_catalog_payload()["plugins"],
+                native_session_nonce=native_bridge.session_nonce,
+                native_response_callback=native_bridge.response_callback_name,
             )
         )
         LOG.info("Injected Amazify runtime: %s", result)
@@ -410,7 +441,9 @@ def stop_daemon_command(args: argparse.Namespace) -> int:
         emit(f"Unable to stop Amazify daemon: {exc}", file=sys.stderr)
         return 1
 
-    mark_daemon_state(config, status="stopped", message="Amazify daemon stopped.", pid=0)
+    mark_daemon_state(
+        config, status="stopped", message="Amazify daemon stopped.", pid=0
+    )
     emit("Amazify daemon stopped.")
     return 0
 
@@ -502,7 +535,7 @@ def run_daemon(args: argparse.Namespace) -> int:
     LOG.info("Amazify launch supervisor starting. Logs: %s", log_file)
     remove_daemon_stop_file(config)
     remove_daemon_launch_file(config)
-    plugin_manager = PluginManager(config.plugin_dir, config.plugin_state_file)
+    plugin_manager = create_plugin_manager(config)
     bridge = LocalBridge(
         port=config.bridge_port,
         token=config.bridge_token,
@@ -556,7 +589,9 @@ def run_daemon(args: argparse.Namespace) -> int:
                         log_file=log_file,
                     )
                 except DevToolsError as exc:
-                    LOG.info("DevTools connection ended; daemon returning to idle: %s", exc)
+                    LOG.info(
+                        "DevTools connection ended; daemon returning to idle: %s", exc
+                    )
                     client.close()
                     client = None
                     owned_devtools_port = None
@@ -612,11 +647,14 @@ def run_daemon(args: argparse.Namespace) -> int:
                         owned_devtools_port = config.devtools_port
                 elif now - last_auto_attach >= DAEMON_AUTO_ATTACH_SECONDS:
                     last_auto_attach = now
-                    target = connect_to_known_devtools_port(config, include_log_ports=False)
+                    target = connect_to_known_devtools_port(
+                        config, include_log_ports=False
+                    )
                     if target is not None:
                         connection = ConnectedTarget(
                             target,
-                            launched_by_amazify=config.devtools_port == owned_devtools_port,
+                            launched_by_amazify=config.devtools_port
+                            == owned_devtools_port,
                         )
 
                 if connection is not None:
@@ -640,7 +678,10 @@ def run_daemon(args: argparse.Namespace) -> int:
 
             if time.monotonic() - last_heartbeat >= DAEMON_HEARTBEAT_SECONDS:
                 last_heartbeat = time.monotonic()
-                if client is None and read_daemon_state(config).get("status") != "error":
+                if (
+                    client is None
+                    and read_daemon_state(config).get("status") != "error"
+                ):
                     mark_daemon_state(
                         config,
                         status="idle",
@@ -653,10 +694,14 @@ def run_daemon(args: argparse.Namespace) -> int:
             try:
                 client.evaluate(build_cleanup_script())
             except Exception:
-                LOG.debug("Cleanup injection failed during daemon shutdown", exc_info=True)
+                LOG.debug(
+                    "Cleanup injection failed during daemon shutdown", exc_info=True
+                )
             client.close()
         bridge.stop()
-        mark_daemon_state(config, status="stopped", message="Amazify daemon stopped.", pid=0)
+        mark_daemon_state(
+            config, status="stopped", message="Amazify daemon stopped.", pid=0
+        )
         remove_daemon_stop_file(config)
         remove_daemon_launch_file(config)
         release_daemon_mutex(daemon_mutex)
@@ -685,7 +730,9 @@ def daemon_spawn_command(
 
 def python_entry_command() -> list[str]:
     if getattr(sys, "frozen", False):
-        sibling_windowed = Path(sys.executable).resolve().parent / "amazifyw" / "amazifyw.exe"
+        sibling_windowed = (
+            Path(sys.executable).resolve().parent / "amazifyw" / "amazifyw.exe"
+        )
         if sibling_windowed.exists():
             return [str(sibling_windowed)]
         return [sys.executable]
@@ -713,7 +760,9 @@ def mark_daemon_state(
     if log_file is not None:
         data["log_file"] = str(log_file)
     try:
-        config.daemon_state_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        config.daemon_state_file.write_text(
+            json.dumps(data, indent=2) + "\n", encoding="utf-8"
+        )
     except OSError as exc:
         LOG.debug("Unable to write daemon state file: %s", exc)
 
@@ -795,7 +844,9 @@ def is_pid_running(pid: int) -> bool:
         return False
     try:
         exit_code = ctypes.c_ulong()
-        if not ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+        if not ctypes.windll.kernel32.GetExitCodeProcess(
+            handle, ctypes.byref(exit_code)
+        ):
             return False
         return exit_code.value == still_active
     finally:
@@ -847,9 +898,13 @@ def connect_or_launch_result(
             return ConnectedTarget(target, launched_by_amazify=False)
 
     if connect_only:
-        LOG.info("Connecting to existing DevTools target on port %s", config.devtools_port)
+        LOG.info(
+            "Connecting to existing DevTools target on port %s", config.devtools_port
+        )
         return ConnectedTarget(
-            DevToolsHttp(config.devtools_port).wait_for_amazon_music_target(timeout_seconds=30),
+            DevToolsHttp(config.devtools_port).wait_for_amazon_music_target(
+                timeout_seconds=30
+            ),
             launched_by_amazify=False,
         )
 
@@ -917,7 +972,9 @@ def connect_to_known_devtools_port(
             return port, None
         return port, target
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(ports), 8)) as executor:
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=min(len(ports), 8)
+    ) as executor:
         for port, target in executor.map(probe, ports):
             if target is not None:
                 targets[port] = target
