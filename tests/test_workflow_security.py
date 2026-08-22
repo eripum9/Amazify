@@ -61,6 +61,17 @@ class WorkflowSecurityContractTests(unittest.TestCase):
             with self.subTest(workflow=filename):
                 self.assertIsNotNone(yaml.safe_load(text))
 
+    def test_catalog_verification_workflows_checkout_full_history(self) -> None:
+        for filename in ("build-windows.yml", "ci-windows.yml"):
+            workflow = yaml.safe_load((WORKFLOW_DIR / filename).read_text(encoding="utf-8"))
+            checkout = next(
+                step
+                for step in workflow["jobs"][next(iter(workflow["jobs"]))]["steps"]
+                if step.get("name") == "Checkout"
+            )
+            with self.subTest(workflow=filename):
+                self.assertEqual(checkout["with"].get("fetch-depth"), 0)
+
     def test_external_actions_are_pinned_to_full_commits(self) -> None:
         for filename, text in workflows().items():
             with self.subTest(workflow=filename):
