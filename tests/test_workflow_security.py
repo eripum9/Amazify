@@ -4,6 +4,8 @@ import re
 import unittest
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
 INSTALLER_SCRIPT = ROOT / "packaging" / "Amazify.iss"
@@ -53,6 +55,11 @@ class WorkflowSecurityContractTests(unittest.TestCase):
             set(workflows()),
             {"build-windows.yml", "ci-windows.yml", "security.yml"},
         )
+
+    def test_workflows_are_valid_yaml(self) -> None:
+        for filename, text in workflows().items():
+            with self.subTest(workflow=filename):
+                self.assertIsNotNone(yaml.safe_load(text))
 
     def test_external_actions_are_pinned_to_full_commits(self) -> None:
         for filename, text in workflows().items():

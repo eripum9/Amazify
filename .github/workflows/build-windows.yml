@@ -46,7 +46,7 @@ jobs:
           python .github/scripts/validate_candidate.py
 
       - name: Install hash-locked build environment
-        run: python -m pip install --require-hashes --only-binary=:all: -r requirements-build.lock
+        run: "python -m pip install --require-hashes --only-binary=:all: -r requirements-build.lock"
 
       - name: Compile Python sources
         run: python -m compileall -q amazify packaging tests .github/scripts

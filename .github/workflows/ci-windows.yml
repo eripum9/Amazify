@@ -34,7 +34,7 @@ jobs:
           cache-dependency-path: requirements-dev.lock
 
       - name: Install hash-locked dependencies
-        run: python -m pip install --require-hashes --only-binary=:all: -r requirements-dev.lock
+        run: "python -m pip install --require-hashes --only-binary=:all: -r requirements-dev.lock"
 
       - name: Compile Python sources
         run: python -m compileall -q amazify packaging tests
