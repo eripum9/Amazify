@@ -63,9 +63,27 @@ def build_runtime_script(
   const ROOT_SELECTOR = '[data-amazify-root="true"]';
   const PANEL_SELECTOR = '[data-amazify-panel="true"]';
   const MENU_SELECTOR = '[data-amazify-menu="true"]';
+  const SETTINGS_STORAGE_KEY = "amazify.runtime.settings.v1";
 
   if (window.Amazify && typeof window.Amazify.cleanup === "function") {{
     window.Amazify.cleanup();
+  }}
+
+  function readRuntimePreferences() {{
+    const defaults = {{
+      autoCheckUpdates: true,
+      enableAfterDownload: false
+    }};
+    try {{
+      const saved = JSON.parse(window.localStorage.getItem(SETTINGS_STORAGE_KEY) || "{{}}");
+      if (!saved || typeof saved !== "object") return defaults;
+      return {{
+        autoCheckUpdates: typeof saved.autoCheckUpdates === "boolean" ? saved.autoCheckUpdates : defaults.autoCheckUpdates,
+        enableAfterDownload: typeof saved.enableAfterDownload === "boolean" ? saved.enableAfterDownload : defaults.enableAfterDownload
+      }};
+    }} catch (_error) {{
+      return defaults;
+    }}
   }}
 
   const state = {{
@@ -80,8 +98,10 @@ def build_runtime_script(
     nativeSequence: 0,
     lastError: "",
     catalogError: "",
+    catalogUrl: "",
     catalogRefreshInFlight: false,
-    bridgeStatus: "Connected"
+    bridgeStatus: "Connected",
+    preferences: readRuntimePreferences()
   }};
 
   const css = `
@@ -333,8 +353,7 @@ def build_runtime_script(
       letter-spacing: 0;
     }}
     .amazify-plugin-row,
-    .amazify-setting-row,
-    .amazify-safety-row {{
+    .amazify-setting-row {{
       border: 1px solid rgba(255,255,255,0.09);
       background: #181a1d;
       border-radius: 8px;
@@ -435,6 +454,12 @@ def build_runtime_script(
     .amazify-primary:hover {{
       background: #22bceb;
     }}
+    .amazify-primary:disabled,
+    .amazify-danger:disabled,
+    .amazify-quiet:disabled {{
+      opacity: 0.45;
+      cursor: default;
+    }}
     .amazify-danger {{
       background: #4a2025;
       color: #ffd7dd;
@@ -455,19 +480,45 @@ def build_runtime_script(
       justify-content: space-between;
       gap: 14px;
     }}
-    .amazify-setting-row strong,
-    .amazify-safety-row strong {{
+    .amazify-setting-row > div {{
+      min-width: 0;
+    }}
+    .amazify-setting-row strong {{
       display: block;
       font-size: 13px;
       line-height: 18px;
     }}
-    .amazify-setting-row span,
-    .amazify-safety-row span {{
+    .amazify-setting-row span {{
       display: block;
       margin-top: 2px;
       color: #a9b1b8;
       font-size: 12px;
       line-height: 17px;
+    }}
+    .amazify-setting-value {{
+      max-width: 250px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .amazify-setting-actions {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }}
+    .amazify-setting-row .amazify-runtime-badge {{
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border-radius: 13px;
+      padding: 0 10px;
+      background: #23282d;
+      color: #dbe0e4;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+      margin-top: 0;
     }}
     .amazify-error {{
       color: #ffb3bd;
@@ -646,7 +697,7 @@ def build_runtime_script(
           <span>Marketplace</span><span>Plugins</span>
         </button>
         <button class="amazify-menu-item" type="button" data-amazify-open="settings">
-          <span>Settings</span><span>Safety</span>
+          <span>Settings</span><span>Preferences</span>
         </button>
         <button class="amazify-menu-item" type="button" data-amazify-disable-all>
           <span>Disable plugins</span><span>One click</span>
@@ -687,8 +738,10 @@ def build_runtime_script(
     const existingMenu = document.querySelector(MENU_SELECTOR);
     if (existingMenu) existingMenu.remove();
     renderPanel();
-    if (tab === "marketplace") {{
+    if (tab === "marketplace" && state.preferences.autoCheckUpdates) {{
       refreshCatalogFromBridge();
+    }} else if (tab === "settings") {{
+      refreshFromBridge();
     }}
   }}
 
@@ -723,8 +776,10 @@ def build_runtime_script(
       tab.addEventListener("click", () => {{
         state.activePanel = tab.dataset.amazifyTab;
         renderPanel();
-        if (state.activePanel === "marketplace") {{
+        if (state.activePanel === "marketplace" && state.preferences.autoCheckUpdates) {{
           refreshCatalogFromBridge();
+        }} else if (state.activePanel === "settings") {{
+          refreshFromBridge();
         }}
       }});
     }});
@@ -735,8 +790,18 @@ def build_runtime_script(
         await setPluginEnabled(pluginId, enabled);
       }});
     }});
-    panel.querySelectorAll("[data-amazify-refresh]").forEach((button) => {{
-      button.addEventListener("click", refreshFromBridge);
+    const refreshStateButton = panel.querySelector("[data-amazify-refresh-state]");
+    if (refreshStateButton) refreshStateButton.addEventListener("click", refreshFromBridge);
+    const refreshCatalogButton = panel.querySelector("[data-amazify-refresh-catalog]");
+    if (refreshCatalogButton) refreshCatalogButton.addEventListener("click", refreshCatalogFromBridge);
+    const openMarketplaceButton = panel.querySelector("[data-amazify-open-marketplace]");
+    if (openMarketplaceButton) openMarketplaceButton.addEventListener("click", () => openPanel("marketplace"));
+    panel.querySelectorAll("[data-amazify-setting]").forEach((toggle) => {{
+      toggle.addEventListener("click", () => {{
+        const name = toggle.dataset.amazifySetting;
+        const enabled = toggle.getAttribute("aria-pressed") !== "true";
+        setRuntimePreference(name, enabled);
+      }});
     }});
     const disableAllButton = panel.querySelector("[data-amazify-disable-all]");
     if (disableAllButton) disableAllButton.addEventListener("click", disableAllPlugins);
@@ -818,28 +883,60 @@ def build_runtime_script(
     const pluginCount = state.plugins.size;
     const catalogCount = state.catalogPlugins.size;
     const enabledCount = [...state.plugins.values()].filter((plugin) => plugin.enabled).length;
+    const updateCount = [...state.catalogPlugins.values()].filter((plugin) => plugin.updateAvailable).length;
+    const catalogStatus = state.catalogError
+      ? state.catalogError
+      : `${{catalogCount}} ${{catalogCount === 1 ? "entry" : "entries"}} loaded`;
     return `
-      <div class="amazify-section-title">Status</div>
+      <div class="amazify-section-title">Preferences</div>
       <div class="amazify-setting-row">
-        <div><strong>Bridge</strong><span>${{esc(state.bridgeStatus)}} at ${{esc(BRIDGE_URL)}}</span></div>
-        <button class="amazify-quiet" type="button" data-amazify-refresh>Refresh</button>
+        <div><strong>Check for plugin updates automatically</strong><span>Refresh the catalog whenever Marketplace opens</span></div>
+        <button class="amazify-toggle" type="button" aria-label="Check for plugin updates automatically" aria-pressed="${{state.preferences.autoCheckUpdates ? "true" : "false"}}" data-amazify-setting="autoCheckUpdates"></button>
       </div>
       <div class="amazify-setting-row">
-        <div><strong>Plugins</strong><span>${{esc(enabledCount)}} enabled from ${{esc(pluginCount)}} installed</span></div>
-        <button class="amazify-danger" type="button" data-amazify-disable-all>Disable all</button>
-      </div>
-      <div class="amazify-setting-row">
-        <div><strong>Catalog</strong><span>${{esc(catalogCount)}} entries loaded${{state.catalogError ? ` - ${{esc(state.catalogError)}}` : ""}}</span></div>
-        <button class="amazify-quiet" type="button" data-amazify-refresh>Refresh</button>
+        <div><strong>Enable new plugins after download</strong><span>Installed updates keep their existing enabled state</span></div>
+        <button class="amazify-toggle" type="button" aria-label="Enable new plugins after download" aria-pressed="${{state.preferences.enableAfterDownload ? "true" : "false"}}" data-amazify-setting="enableAfterDownload"></button>
       </div>
 
-      <div class="amazify-section-title">Safety</div>
-      <div class="amazify-safety-row"><strong>Amazify customizes Amazon Music at runtime through a local DevTools connection.</strong><span>Enhanced injection should stay opt-in.</span></div>
-      <div class="amazify-safety-row"><strong>It does not modify Amazon Music files on disk.</strong><span>Runtime nodes, styles, and plugin state are removable.</span></div>
-      <div class="amazify-safety-row"><strong>Plugins can change what the Amazon Music page displays.</strong><span>Marketplace plugins should be tested and open source; third-party plugins need extra care.</span></div>
-      <div class="amazify-safety-row"><strong>Only install plugins from sources you trust.</strong><span>Local plugins are loaded from the Amazify plugin folder.</span></div>
-      <div class="amazify-safety-row"><strong>The small background companion only handles Amazon Music connection, plugin files, and local commands.</strong><span>It binds the bridge to localhost only.</span></div>
+      <div class="amazify-section-title">Plugin management</div>
+      <div class="amazify-setting-row">
+        <div><strong>Installed plugins</strong><span>${{esc(enabledCount)}} enabled from ${{esc(pluginCount)}} installed</span></div>
+        <button class="amazify-quiet" type="button" data-amazify-open-marketplace>Manage</button>
+      </div>
+      <div class="amazify-setting-row">
+        <div><strong>Available updates</strong><span>${{esc(updateCount)}} plugin ${{updateCount === 1 ? "update" : "updates"}} found</span></div>
+        <button class="amazify-primary" type="button" data-amazify-refresh-catalog>Check now</button>
+      </div>
+      <div class="amazify-setting-row">
+        <div><strong>Disable all plugins</strong><span>Turn off every installed plugin without uninstalling it</span></div>
+        <button class="amazify-danger" type="button" data-amazify-disable-all ${{enabledCount ? "" : "disabled"}}>Disable all</button>
+      </div>
+
+      <div class="amazify-section-title">Runtime</div>
+      <div class="amazify-setting-row">
+        <div><strong>Connection</strong><span>${{esc(state.bridgeStatus)}} at ${{esc(BRIDGE_URL)}}</span></div>
+        <button class="amazify-quiet" type="button" data-amazify-refresh-state>Refresh</button>
+      </div>
+      <div class="amazify-setting-row">
+        <div><strong>Catalog</strong><span>${{esc(catalogStatus)}}</span></div>
+        <span class="amazify-runtime-badge">${{esc(updateCount)}} updates</span>
+      </div>
+      <div class="amazify-setting-row">
+        <div><strong>Catalog source</strong><span class="amazify-setting-value" title="${{esc(state.catalogUrl || "Not loaded")}}">${{esc(state.catalogUrl || "Not loaded")}}</span></div>
+        <span class="amazify-runtime-badge">v${{esc(VERSION)}}</span>
+      </div>
     `;
+  }}
+
+  function setRuntimePreference(name, value) {{
+    if (!Object.prototype.hasOwnProperty.call(state.preferences, name)) return;
+    state.preferences[name] = Boolean(value);
+    try {{
+      window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(state.preferences));
+    }} catch (_error) {{
+      // The setting still applies for this session when storage is unavailable.
+    }}
+    renderPanel();
   }}
 
   async function fetchBridge(path, options = {{}}) {{
@@ -981,10 +1078,15 @@ def build_runtime_script(
 
   async function installPlugin(pluginId) {{
     if (!pluginId) return;
+    const wasInstalled = state.plugins.has(pluginId);
     try {{
       state.lastError = "";
       const data = await bridgeCommand("plugins.install", {{ pluginId }});
       syncStatePayload(data);
+      if (!wasInstalled && state.preferences.enableAfterDownload) {{
+        const enabledData = await bridgeCommand("plugins.enable", {{ pluginId }});
+        syncStatePayload(enabledData);
+      }}
     }} catch (error) {{
       state.lastError = error.message || String(error);
       renderPanel();
@@ -1181,6 +1283,9 @@ def build_runtime_script(
   }}
 
   function syncStatePayload(data) {{
+    if (typeof data.catalogUrl === "string") {{
+      state.catalogUrl = data.catalogUrl;
+    }}
     if (Array.isArray(data.catalogPlugins)) {{
       syncCatalog(data.catalogPlugins, data.catalogError || "");
     }}
