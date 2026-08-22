@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import ctypes
 import json
 import logging
@@ -14,9 +15,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .bridge import LocalBridge
-from .config import RuntimeConfig
+from .config import RuntimeConfig, find_free_local_port
 from .devtools import DevToolsClient, DevToolsConnectionClosed, DevToolsError, DevToolsHttp
-from .launcher import LaunchError, discover_launch_candidates, launch_candidate
+from .launcher import (
+    LaunchError,
+    amazon_music_is_running,
+    discover_launch_candidates,
+    focus_amazon_music,
+    launch_candidate,
+    running_amazon_music_devtools_ports,
+    runtime_launch_candidates,
+)
 from .logging_setup import setup_logging
 from .native_bridge import NativeBindingBridge
 from .plugin_manager import PluginManager
@@ -32,13 +41,13 @@ DAEMON_STATE_VERSION = 1
 DAEMON_START_TIMEOUT_SECONDS = 8
 DAEMON_STOP_TIMEOUT_SECONDS = 10
 DAEMON_HEARTBEAT_SECONDS = 2
-DAEMON_RETRY_DELAY_SECONDS = 4
-AUMID_LAUNCH_ATTEMPTS = 3
 AUMID_TARGET_TIMEOUT_SECONDS = 20
 EXE_TARGET_TIMEOUT_SECONDS = 15
-RETRY_DELAY_SECONDS = 2
-KNOWN_PORT_PROBE_TIMEOUT_SECONDS = 1.25
+KNOWN_PORT_PROBE_TIMEOUT_SECONDS = 0.6
 KNOWN_PORT_LIMIT = 8
+DAEMON_POLL_SECONDS = 0.1
+DAEMON_AUTO_ATTACH_SECONDS = 1.0
+DAEMON_MUTEX_NAME = "Local\\AmazifyLaunchSupervisor"
 DEVTOOLS_PORT_PATTERN = re.compile(r"(?:DevTools port:|with DevTools port)\s*(\d+)")
 
 
@@ -119,6 +128,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run the daemon worker in the current process.",
     )
     add_launch_arguments(daemon_run_parser)
+    daemon_run_parser.add_argument(
+        "--launch-on-start",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
 
     shortcuts_parser = subparsers.add_parser(
         "shortcuts",
@@ -169,7 +183,7 @@ def run(args: argparse.Namespace) -> int:
     show_first_run_welcome(config)
     if getattr(args, "foreground", False) or getattr(args, "once", False):
         return run_foreground(args, config=config, daemon_mode=False)
-    return start_daemon(args, config=config)
+    return start_daemon(args, config=config, request_launch=True)
 
 
 def run_foreground(
@@ -222,40 +236,7 @@ def run_foreground(
             connect_only=getattr(args, "connect_only", False),
             prefer_known_ports=not explicit_devtools_port,
         )
-        target = connection.target
-        client = DevToolsClient(target)
-        client.connect()
-        native_bridge = NativeBindingBridge(client, plugin_manager)
-        native_bridge.install()
-        probe = client.probe_amazon_music()
-        remember_devtools_port(config)
-        LOG.info(
-            "Connected to Amazon Music target: title=%r url=%r",
-            probe.get("title"),
-            probe.get("href"),
-        )
-        if connection.launched_by_amazify:
-            try:
-                tagged_windows = apply_amazify_window_identity(client)
-                if tagged_windows:
-                    LOG.info(
-                        "Applied Amazify taskbar identity to %s Amazon Music window(s)",
-                        tagged_windows,
-                    )
-                else:
-                    LOG.info("No native Amazon Music window was tagged for Amazify identity")
-            except Exception as exc:
-                LOG.debug("Unable to apply Amazify taskbar identity: %s", exc, exc_info=True)
-        client.evaluate(build_cleanup_script())
-        result = client.evaluate(
-            build_runtime_script(
-                bridge_url=config.bridge_url,
-                bridge_token=config.bridge_token,
-                plugins=plugin_manager.runtime_snapshot(),
-                catalog_plugins=plugin_manager.catalog_payload()["plugins"],
-            )
-        )
-        LOG.info("Injected Amazify runtime: %s", result)
+        client = inject_connection(config, plugin_manager, connection)
         mark_daemon_state(
             config,
             status="connected" if daemon_mode else "foreground",
@@ -326,6 +307,50 @@ def run_foreground(
                 pid=0,
             )
             remove_daemon_stop_file(config)
+
+
+def inject_connection(
+    config: RuntimeConfig,
+    plugin_manager: PluginManager,
+    connection: ConnectedTarget,
+) -> DevToolsClient:
+    client = DevToolsClient(connection.target)
+    try:
+        client.connect()
+        NativeBindingBridge(client, plugin_manager).install()
+        probe = client.probe_amazon_music()
+        remember_devtools_port(config)
+        LOG.info(
+            "Connected to Amazon Music target: title=%r url=%r",
+            probe.get("title"),
+            probe.get("href"),
+        )
+        if connection.launched_by_amazify:
+            try:
+                tagged_windows = apply_amazify_window_identity(client)
+                if tagged_windows:
+                    LOG.info(
+                        "Applied Amazify taskbar identity to %s Amazon Music window(s)",
+                        tagged_windows,
+                    )
+                else:
+                    LOG.info("No native Amazon Music window was tagged for Amazify identity")
+            except Exception as exc:
+                LOG.debug("Unable to apply Amazify taskbar identity: %s", exc, exc_info=True)
+        client.evaluate(build_cleanup_script())
+        result = client.evaluate(
+            build_runtime_script(
+                bridge_url=config.bridge_url,
+                bridge_token=config.bridge_token,
+                plugins=plugin_manager.runtime_snapshot(),
+                catalog_plugins=plugin_manager.cached_catalog_payload()["plugins"],
+            )
+        )
+        LOG.info("Injected Amazify runtime: %s", result)
+        return client
+    except Exception:
+        client.close()
+        raise
 
 
 def daemon_command(args: argparse.Namespace) -> int:
@@ -415,15 +440,24 @@ def status_daemon_command(args: argparse.Namespace) -> int:
     return 0 if running else 1
 
 
-def start_daemon(args: argparse.Namespace, *, config: RuntimeConfig) -> int:
+def start_daemon(
+    args: argparse.Namespace,
+    *,
+    config: RuntimeConfig,
+    request_launch: bool = False,
+) -> int:
     state = read_daemon_state(config)
     pid = int(state.get("pid") or 0) if state else 0
     if pid and is_pid_running(pid):
-        emit(f"Amazify daemon is already running with PID {pid}.")
+        if request_launch:
+            request_daemon_launch(config)
+            emit(f"Amazon Music launch requested through Amazify daemon PID {pid}.")
+        else:
+            emit(f"Amazify daemon is already running with PID {pid}.")
         return 0
 
     remove_daemon_stop_file(config)
-    command = daemon_spawn_command(args)
+    command = daemon_spawn_command(args, launch_on_start=request_launch)
     log_file = config.log_dir / "daemon-process.log"
     log_file.parent.mkdir(parents=True, exist_ok=True)
     flags = 0
@@ -455,36 +489,185 @@ def start_daemon(args: argparse.Namespace, *, config: RuntimeConfig) -> int:
 
 
 def run_daemon(args: argparse.Namespace) -> int:
+    daemon_mutex = acquire_daemon_mutex()
+    if daemon_mutex is None:
+        LOG.info("Another Amazify daemon already owns the launch supervisor mutex")
+        return 0
     config = RuntimeConfig.create(
         devtools_port=getattr(args, "devtools_port", None),
         bridge_port=getattr(args, "bridge_port", None),
         manual_launcher=getattr(args, "manual_launcher", None),
     )
-    config.log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = setup_logging(config.log_dir, verbose=getattr(args, "verbose", False))
+    LOG.info("Amazify launch supervisor starting. Logs: %s", log_file)
     remove_daemon_stop_file(config)
-    mark_daemon_state(config, status="starting", message="Amazify daemon is starting.")
+    remove_daemon_launch_file(config)
+    plugin_manager = PluginManager(config.plugin_dir, config.plugin_state_file)
+    bridge = LocalBridge(
+        port=config.bridge_port,
+        token=config.bridge_token,
+        plugin_manager=plugin_manager,
+    )
+    bridge.start()
 
-    while not config.daemon_stop_file.exists():
-        exit_code = run_foreground(args, config=config, daemon_mode=True)
-        if config.daemon_stop_file.exists() or exit_code == 0:
-            break
-        mark_daemon_state(
-            config,
-            status="waiting",
-            message=f"Amazon Music is not ready. Retrying in {DAEMON_RETRY_DELAY_SECONDS}s.",
-        )
-        deadline = time.monotonic() + DAEMON_RETRY_DELAY_SECONDS
-        while time.monotonic() < deadline:
-            if config.daemon_stop_file.exists():
-                break
-            time.sleep(0.25)
+    stop_requested = False
+    client: DevToolsClient | None = None
+    launch_pending = bool(getattr(args, "launch_on_start", False))
+    owned_devtools_port: int | None = None
+    last_heartbeat = 0.0
+    last_auto_attach = 0.0
 
-    mark_daemon_state(config, status="stopped", message="Amazify daemon stopped.", pid=0)
-    remove_daemon_stop_file(config)
+    def request_stop(signum: int, frame: object) -> None:
+        nonlocal stop_requested
+        stop_requested = True
+
+    signal.signal(signal.SIGINT, request_stop)
+    signal.signal(signal.SIGTERM, request_stop)
+    mark_daemon_state(
+        config,
+        status="idle",
+        message="Amazify daemon is ready.",
+        log_file=log_file,
+    )
+
+    try:
+        while not stop_requested and not config.daemon_stop_file.exists():
+            launch_requested_now = consume_daemon_launch_request(config)
+            launch_pending = launch_pending or launch_requested_now
+
+            if client is not None:
+                if launch_pending:
+                    try:
+                        focus_amazon_music()
+                    except Exception:
+                        LOG.debug("Unable to focus Amazon Music", exc_info=True)
+                    launch_pending = False
+                try:
+                    client.pump(timeout=0.2)
+                except DevToolsConnectionClosed as exc:
+                    LOG.info("Amazon Music closed; daemon returning to idle: %s", exc)
+                    client.close()
+                    client = None
+                    owned_devtools_port = None
+                    mark_daemon_state(
+                        config,
+                        status="idle",
+                        message="Amazify daemon is waiting for Amazon Music.",
+                        log_file=log_file,
+                    )
+                except DevToolsError as exc:
+                    LOG.info("DevTools connection ended; daemon returning to idle: %s", exc)
+                    client.close()
+                    client = None
+                    owned_devtools_port = None
+                    mark_daemon_state(
+                        config,
+                        status="idle",
+                        message="Amazify daemon is waiting for Amazon Music.",
+                        log_file=log_file,
+                    )
+                except Exception as exc:
+                    LOG.exception("Unexpected DevTools pump failure; returning to idle")
+                    client.close()
+                    client = None
+                    owned_devtools_port = None
+                    mark_daemon_state(
+                        config,
+                        status="error",
+                        message=f"DevTools connection failed: {exc}",
+                        log_file=log_file,
+                    )
+                if (
+                    client is not None
+                    and time.monotonic() - last_heartbeat >= DAEMON_HEARTBEAT_SECONDS
+                ):
+                    last_heartbeat = time.monotonic()
+                    mark_daemon_state(
+                        config,
+                        status="connected",
+                        message="Amazify is injected into Amazon Music.",
+                        log_file=log_file,
+                    )
+                continue
+
+            now = time.monotonic()
+            connection: ConnectedTarget | None = None
+            launch_started_without_existing_app = False
+            try:
+                if launch_pending:
+                    launch_pending = False
+                    launch_started_without_existing_app = not amazon_music_is_running()
+                    mark_daemon_state(
+                        config,
+                        status="launching",
+                        message="Launching or connecting to Amazon Music.",
+                        log_file=log_file,
+                    )
+                    connection = connect_or_launch_result(
+                        config,
+                        connect_only=getattr(args, "connect_only", False),
+                        prefer_known_ports=getattr(args, "devtools_port", None) is None,
+                    )
+                    if connection.launched_by_amazify:
+                        owned_devtools_port = config.devtools_port
+                elif now - last_auto_attach >= DAEMON_AUTO_ATTACH_SECONDS:
+                    last_auto_attach = now
+                    target = connect_to_known_devtools_port(config, include_log_ports=False)
+                    if target is not None:
+                        connection = ConnectedTarget(
+                            target,
+                            launched_by_amazify=config.devtools_port == owned_devtools_port,
+                        )
+
+                if connection is not None:
+                    client = inject_connection(config, plugin_manager, connection)
+                    mark_daemon_state(
+                        config,
+                        status="connected",
+                        message="Amazify is injected into Amazon Music.",
+                        log_file=log_file,
+                    )
+            except (DevToolsError, LaunchError, OSError) as exc:
+                if launch_started_without_existing_app:
+                    owned_devtools_port = config.devtools_port
+                LOG.exception("Amazify launch request failed")
+                mark_daemon_state(
+                    config,
+                    status="error",
+                    message=str(exc),
+                    log_file=log_file,
+                )
+
+            if time.monotonic() - last_heartbeat >= DAEMON_HEARTBEAT_SECONDS:
+                last_heartbeat = time.monotonic()
+                if client is None and read_daemon_state(config).get("status") != "error":
+                    mark_daemon_state(
+                        config,
+                        status="idle",
+                        message="Amazify daemon is waiting for Amazon Music.",
+                        log_file=log_file,
+                    )
+            time.sleep(DAEMON_POLL_SECONDS)
+    finally:
+        if client is not None:
+            try:
+                client.evaluate(build_cleanup_script())
+            except Exception:
+                LOG.debug("Cleanup injection failed during daemon shutdown", exc_info=True)
+            client.close()
+        bridge.stop()
+        mark_daemon_state(config, status="stopped", message="Amazify daemon stopped.", pid=0)
+        remove_daemon_stop_file(config)
+        remove_daemon_launch_file(config)
+        release_daemon_mutex(daemon_mutex)
     return 0
 
 
-def daemon_spawn_command(args: argparse.Namespace) -> list[str]:
+def daemon_spawn_command(
+    args: argparse.Namespace,
+    *,
+    launch_on_start: bool = False,
+) -> list[str]:
     entry = python_entry_command()
     command = [*entry, "daemon", "run"]
     for option in ["devtools_port", "bridge_port", "manual_launcher"]:
@@ -493,6 +676,8 @@ def daemon_spawn_command(args: argparse.Namespace) -> list[str]:
             command.extend([f"--{option.replace('_', '-')}", str(value)])
     if getattr(args, "connect_only", False):
         command.append("--connect-only")
+    if launch_on_start:
+        command.append("--launch-on-start")
     if getattr(args, "verbose", False):
         command.insert(1 if getattr(sys, "frozen", False) else len(entry), "--verbose")
     return command
@@ -551,6 +736,36 @@ def request_daemon_stop(config: RuntimeConfig) -> None:
         LOG.debug("Unable to write daemon stop file: %s", exc)
 
 
+def request_daemon_launch(config: RuntimeConfig) -> None:
+    payload = {
+        "requested_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "request_id": f"{os.getpid()}-{time.time_ns()}",
+    }
+    temporary = config.daemon_launch_file.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload), encoding="utf-8")
+    temporary.replace(config.daemon_launch_file)
+
+
+def consume_daemon_launch_request(config: RuntimeConfig) -> bool:
+    try:
+        config.daemon_launch_file.unlink()
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        LOG.debug("Unable to consume daemon launch request: %s", exc)
+        return False
+
+
+def remove_daemon_launch_file(config: RuntimeConfig) -> None:
+    try:
+        config.daemon_launch_file.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        LOG.debug("Unable to remove daemon launch request: %s", exc)
+
+
 def remove_daemon_stop_file(config: RuntimeConfig) -> None:
     try:
         config.daemon_stop_file.unlink()
@@ -587,6 +802,26 @@ def is_pid_running(pid: int) -> bool:
         ctypes.windll.kernel32.CloseHandle(handle)
 
 
+def acquire_daemon_mutex() -> int | None:
+    if os.name != "nt":
+        return 0
+    kernel32 = ctypes.windll.kernel32
+    kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    handle = kernel32.CreateMutexW(None, False, DAEMON_MUTEX_NAME)
+    if not handle:
+        raise OSError("Unable to create Amazify daemon mutex")
+    if kernel32.GetLastError() == 183:
+        kernel32.CloseHandle(handle)
+        return None
+    return int(handle)
+
+
+def release_daemon_mutex(handle: int) -> None:
+    if os.name == "nt" and handle:
+        ctypes.windll.kernel32.CloseHandle(ctypes.c_void_p(handle))
+
+
 def connect_or_launch(
     config: RuntimeConfig,
     *,
@@ -611,57 +846,85 @@ def connect_or_launch_result(
         if target is not None:
             return ConnectedTarget(target, launched_by_amazify=False)
 
-    http = DevToolsHttp(config.devtools_port)
     if connect_only:
         LOG.info("Connecting to existing DevTools target on port %s", config.devtools_port)
         return ConnectedTarget(
-            http.wait_for_amazon_music_target(timeout_seconds=30),
+            DevToolsHttp(config.devtools_port).wait_for_amazon_music_target(timeout_seconds=30),
             launched_by_amazify=False,
         )
 
-    candidates = discover_launch_candidates(config.manual_launcher)
+    if amazon_music_is_running():
+        raise LaunchError(
+            "Amazon Music is already running without an accessible DevTools endpoint. "
+            "Close it once, then launch Amazon Music (Amazify) again."
+        )
+
+    if prefer_known_ports:
+        config.devtools_port = find_free_local_port()
+    http = DevToolsHttp(config.devtools_port)
+    candidates = runtime_launch_candidates(config.manual_launcher)
     if not candidates:
         raise LaunchError("No Amazon Music launch candidates were discovered")
 
     last_error: Exception | None = None
     for candidate in candidates:
-        attempts = AUMID_LAUNCH_ATTEMPTS if candidate.kind == "aumid" else 1
         timeout_seconds = (
             AUMID_TARGET_TIMEOUT_SECONDS
             if candidate.kind == "aumid"
             else EXE_TARGET_TIMEOUT_SECONDS
         )
-        for attempt in range(1, attempts + 1):
-            try:
-                launch_candidate(candidate, config.devtools_port)
-                return ConnectedTarget(
-                    http.wait_for_amazon_music_target(timeout_seconds=timeout_seconds),
-                    launched_by_amazify=True,
-                )
-            except (LaunchError, DevToolsError, OSError) as exc:
-                LOG.info(
-                    "Launch candidate failed: %s attempt %s/%s (%s)",
-                    candidate.label,
-                    attempt,
-                    attempts,
-                    exc,
-                )
-                last_error = exc
-                if attempt < attempts:
-                    time.sleep(RETRY_DELAY_SECONDS)
+        try:
+            launch_candidate(candidate, config.devtools_port)
+            return ConnectedTarget(
+                http.wait_for_amazon_music_target(timeout_seconds=timeout_seconds),
+                launched_by_amazify=True,
+            )
+        except (LaunchError, DevToolsError, OSError) as exc:
+            LOG.info("Launch candidate failed: %s (%s)", candidate.label, exc)
+            last_error = exc
     raise LaunchError(
         "No launch candidate produced an Amazon Music DevTools target "
         f"on port {config.devtools_port}: {last_error}"
     )
 
 
-def connect_to_known_devtools_port(config: RuntimeConfig) -> object | None:
-    for port in recent_devtools_ports(config):
+def connect_to_known_devtools_port(
+    config: RuntimeConfig,
+    *,
+    include_log_ports: bool = True,
+) -> object | None:
+    ports: list[int] = []
+    for port in running_amazon_music_devtools_ports():
+        _append_unique_port(ports, port)
+    _append_unique_port(ports, config.devtools_port)
+    if include_log_ports:
+        for port in recent_devtools_ports(config):
+            _append_unique_port(ports, port)
+    ports = ports[:KNOWN_PORT_LIMIT]
+    if not ports:
+        return None
+
+    targets: dict[int, object] = {}
+
+    def probe(port: int) -> tuple[int, object | None]:
         try:
-            target = DevToolsHttp(port).wait_for_amazon_music_target(
+            http = DevToolsHttp(port)
+            http.request_timeout = 0.25
+            target = http.wait_for_amazon_music_target(
                 timeout_seconds=KNOWN_PORT_PROBE_TIMEOUT_SECONDS
             )
         except DevToolsError:
+            return port, None
+        return port, target
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(ports), 8)) as executor:
+        for port, target in executor.map(probe, ports):
+            if target is not None:
+                targets[port] = target
+
+    for port in ports:
+        target = targets.get(port)
+        if target is None:
             continue
         config.devtools_port = port
         LOG.info("Reusing existing Amazon Music DevTools target on port %s", port)

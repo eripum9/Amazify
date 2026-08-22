@@ -38,6 +38,30 @@ class InstallerWindowedDetectionTests(unittest.TestCase):
             self.assertTrue(amazify_installer._is_windowed())
 
 
+class InnoSetupContractTests(unittest.TestCase):
+    def test_installer_exposes_startup_and_taskbar_tasks(self) -> None:
+        script = (
+            Path(__file__).parent.parent / "packaging" / "Amazify.iss"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('Name: "startupdaemon"', script)
+        self.assertIn('Flags: checkedonce', script)
+        self.assertIn('Name: "taskbaricon"', script)
+        self.assertIn('ValueName: "Amazify"', script)
+        self.assertIn('Parameters: "daemon start"', script)
+
+    def test_installer_stops_windowless_daemon_before_file_checks(self) -> None:
+        script = (
+            Path(__file__).parent.parent / "packaging" / "Amazify.iss"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            "function PrepareToInstall(var NeedsRestart: Boolean): String;", script
+        )
+        self.assertIn("Exec(DaemonExe, 'daemon stop'", script)
+        self.assertIn("ewWaitUntilTerminated", script)
+
+
 class InstallerMessageBoxTests(unittest.TestCase):
     def _make_ctypes_mock(self) -> mock.MagicMock:
         m = mock.MagicMock()

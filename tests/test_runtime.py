@@ -18,6 +18,7 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("position: fixed", script)
         self.assertIn("findHeaderHost", script)
         self.assertIn("data-amazify-placement", script)
+        self.assertIn("host.appendChild(state.root)", script)
         self.assertIn("host.appendChild(root)", script)
         self.assertIn("data-amazify-panel", script)
         self.assertIn("syncPlugins", script)

@@ -150,6 +150,8 @@ class PluginManager:
         self.plugin_dir.mkdir(parents=True, exist_ok=True)
         self._state = self._load_state()
         self._catalog_cache: tuple[float, list[dict[str, Any]]] | None = None
+        self._catalog_cache_file = self.state_file.parent / "plugin_catalog_cache.json"
+        self._load_catalog_cache()
 
     def _load_state(self) -> dict[str, Any]:
         if not self.state_file.exists():
@@ -202,6 +204,7 @@ class PluginManager:
 
         normalized = [self._normalize_catalog_plugin(item) for item in plugins]
         self._catalog_cache = (_now(), normalized)
+        self._save_catalog_cache(normalized)
         return self._annotate_catalog_plugins(normalized)
 
     def catalog_payload(self, *, force_refresh: bool = False) -> dict[str, Any]:
@@ -213,6 +216,38 @@ class PluginManager:
             }
         except PluginError as exc:
             return {"plugins": [], "error": str(exc), "url": self.catalog_url}
+
+    def cached_catalog_payload(self) -> dict[str, Any]:
+        plugins = self._catalog_cache[1] if self._catalog_cache is not None else []
+        return {
+            "plugins": self._annotate_catalog_plugins(plugins),
+            "error": "",
+            "url": self.catalog_url,
+        }
+
+    def _load_catalog_cache(self) -> None:
+        try:
+            data = json.loads(self._catalog_cache_file.read_text(encoding="utf-8"))
+            items = data.get("plugins", []) if isinstance(data, dict) else []
+            if not isinstance(items, list):
+                return
+            normalized = [self._normalize_catalog_plugin(item) for item in items]
+            self._catalog_cache = (0.0, normalized)
+        except (OSError, json.JSONDecodeError, PluginError):
+            return
+
+    def _save_catalog_cache(self, plugins: list[dict[str, Any]]) -> None:
+        payload = {
+            "updated_at": _now(),
+            "plugins": plugins,
+        }
+        try:
+            self._catalog_cache_file.write_text(
+                json.dumps(payload, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
 
     def install_from_catalog(self, plugin_id: str) -> PluginPackage:
         plugin_id = plugin_id.strip()

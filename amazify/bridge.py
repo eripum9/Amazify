@@ -150,8 +150,10 @@ class LocalBridge:
                 return data
 
             def _state_payload(self, *, force_catalog_refresh: bool = False) -> dict[str, Any]:
-                catalog = bridge.plugin_manager.catalog_payload(
-                    force_refresh=force_catalog_refresh
+                catalog = (
+                    bridge.plugin_manager.catalog_payload(force_refresh=True)
+                    if force_catalog_refresh
+                    else bridge.plugin_manager.cached_catalog_payload()
                 )
                 return {
                     "ok": True,
@@ -201,7 +203,7 @@ class LocalBridge:
     def _handle_command(self, name: str, payload: dict[str, Any]) -> dict[str, Any]:
         if name == "plugins.disableAll":
             self.plugin_manager.disable_all()
-            catalog = self.plugin_manager.catalog_payload()
+            catalog = self.plugin_manager.cached_catalog_payload()
             return {
                 "ok": True,
                 "plugins": self.plugin_manager.public_plugins(),

@@ -68,7 +68,11 @@ class NativeBindingBridge:
         raise PluginError(f"Unknown native command: {name}")
 
     def _state_payload(self, *, force_catalog_refresh: bool = False) -> dict[str, Any]:
-        catalog = self.plugin_manager.catalog_payload(force_refresh=force_catalog_refresh)
+        catalog = (
+            self.plugin_manager.catalog_payload(force_refresh=True)
+            if force_catalog_refresh
+            else self.plugin_manager.cached_catalog_payload()
+        )
         return {
             "ok": True,
             "plugins": self.plugin_manager.public_plugins(),
@@ -90,6 +94,6 @@ class NativeBindingBridge:
             "})()"
         )
         try:
-            self.client.evaluate(expression)
+            self.client.evaluate_nowait(expression)
         except DevToolsError:
             LOG.debug("Failed to deliver native bridge response", exc_info=True)

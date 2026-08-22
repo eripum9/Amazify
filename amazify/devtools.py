@@ -42,9 +42,15 @@ class Target:
 
 
 class DevToolsHttp:
-    def __init__(self, port: int, host: str = DEVTOOLS_HOST) -> None:
+    def __init__(
+        self,
+        port: int,
+        host: str = DEVTOOLS_HOST,
+        request_timeout: float = 1.0,
+    ) -> None:
         self.port = port
         self.host = host
+        self.request_timeout = request_timeout
 
     @property
     def base_url(self) -> str:
@@ -53,7 +59,7 @@ class DevToolsHttp:
     def list_targets(self) -> list[Target]:
         url = f"{self.base_url}/json/list"
         try:
-            with urllib.request.urlopen(url, timeout=1.0) as response:
+            with urllib.request.urlopen(url, timeout=self.request_timeout) as response:
                 data = json.loads(response.read().decode("utf-8"))
         except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
             raise DevToolsError(f"Unable to read DevTools target list at {url}") from exc
@@ -160,6 +166,34 @@ class DevToolsClient:
             if "value" in remote:
                 return remote["value"]
             return remote
+
+    def evaluate_nowait(
+        self,
+        expression: str,
+        *,
+        await_promise: bool = True,
+        return_by_value: bool = True,
+    ) -> int:
+        """Send an evaluation without recursively reading from the DevTools socket."""
+        if self._ws is None:
+            raise DevToolsError("DevTools WebSocket is not connected")
+        self._message_id += 1
+        message_id = self._message_id
+        self._ws.send(
+            json.dumps(
+                {
+                    "id": message_id,
+                    "method": "Runtime.evaluate",
+                    "params": {
+                        "expression": expression,
+                        "awaitPromise": await_promise,
+                        "returnByValue": return_by_value,
+                        "userGesture": True,
+                    },
+                }
+            )
+        )
+        return message_id
 
     def on_event(self, method: str, handler: Callable[[dict[str, Any]], None]) -> None:
         self._event_handlers[method] = handler

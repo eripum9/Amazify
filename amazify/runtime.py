@@ -598,7 +598,11 @@ def build_runtime_script(
 
   function attachRoot() {{
     const host = findHeaderHost();
-    if (state.root && state.root.isConnected && state.root.parentElement === host) {{
+    if (state.root) {{
+      state.root.dataset.amazifyPlacement = host === document.body ? "floating" : "header";
+      if (state.root.parentElement !== host) {{
+        host.appendChild(state.root);
+      }}
       return;
     }}
     const existing = document.querySelector(ROOT_SELECTOR);

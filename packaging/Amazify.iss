@@ -1,5 +1,5 @@
 #define AppName "Amazify"
-#define AppVersion "0.1.0"
+#define AppVersion "0.1.1"
 #define AppPublisher "Amazify"
 #define AppExeName "amazify.exe"
 #define AppWindowedExeDir "amazifyw"
@@ -41,14 +41,22 @@ Type: files; Name: "{userprograms}\Amazon Music (Amazify).lnk"
 Type: files; Name: "{userdesktop}\Amazon Music (Amazify).lnk"
 Type: files; Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\Amazon Music (Amazify).lnk"
 
+[Tasks]
+Name: "startupdaemon"; Description: "Start the Amazify daemon when I sign in"; GroupDescription: "Background service:"; Flags: checkedonce
+Name: "desktopicon"; Description: "Create a Desktop shortcut"; GroupDescription: "Additional shortcuts:"
+Name: "taskbaricon"; Description: "Pin Amazon Music (Amazify) to the taskbar"; GroupDescription: "Additional shortcuts:"
+
 [Icons]
 Name: "{group}\Amazon Music (Amazify)"; Filename: "{app}\{#AppWindowedExePath}"; Parameters: "run"; WorkingDir: "{app}\{#AppWindowedExeDir}"; IconFilename: "{app}\{#AppWindowedExePath}"; Comment: "Launch Amazon Music through Amazify"; AppUserModelID: "{#AmazifyAppUserModelID}"
 Name: "{group}\Amazify CLI"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "Open the Amazify command line"
+Name: "{userdesktop}\Amazon Music (Amazify)"; Filename: "{app}\{#AppWindowedExePath}"; Parameters: "run"; WorkingDir: "{app}\{#AppWindowedExeDir}"; IconFilename: "{app}\{#AppWindowedExePath}"; Comment: "Launch Amazon Music through Amazify"; AppUserModelID: "{#AmazifyAppUserModelID}"; Tasks: desktopicon
+
+[Registry]
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Amazify"; ValueData: """{app}\{#AppWindowedExePath}"" daemon start"; Flags: uninsdeletevalue; Tasks: startupdaemon
 
 [Run]
-Filename: "{app}\{#AppWindowedExePath}"; Parameters: "shortcuts install --desktop --target-exe ""{app}\{#AppWindowedExePath}"""; Description: "Create Desktop shortcut"; Flags: postinstall unchecked skipifsilent runhidden waituntilterminated
-Filename: "{app}\{#AppWindowedExePath}"; Parameters: "shortcuts install --taskbar --target-exe ""{app}\{#AppWindowedExePath}"""; Description: "Try to pin to taskbar"; Flags: postinstall unchecked skipifsilent runhidden waituntilterminated
-Filename: "{app}\{#AppWindowedExePath}"; Parameters: "run"; Description: "Start Amazify daemon now"; Flags: nowait postinstall skipifsilent runhidden
+Filename: "{app}\{#AppWindowedExePath}"; Parameters: "shortcuts install --taskbar --target-exe ""{app}\{#AppWindowedExePath}"""; Flags: runhidden waituntilterminated; Tasks: taskbaricon
+Filename: "{app}\{#AppWindowedExePath}"; Parameters: "daemon start"; Flags: runhidden waituntilterminated
 
 [UninstallRun]
 Filename: "{app}\{#AppWindowedExePath}"; Parameters: "daemon stop"; Flags: runhidden waituntilterminated; RunOnceId: "StopDaemon"
@@ -152,11 +160,41 @@ begin
   end;
 end;
 
+{ Stop the installed background worker before Restart Manager checks files in use.
+  The daemon is windowless, so it cannot respond to a normal close-window request. }
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  DaemonExe, DaemonDir: string;
+  ResultCode: Integer;
+begin
+  Result := '';
+  DaemonExe := ExpandConstant('{app}\{#AppWindowedExePath}');
+  if not FileExists(DaemonExe) then Exit;
+
+  DaemonDir := ExtractFileDir(DaemonExe);
+  if not Exec(DaemonExe, 'daemon stop', DaemonDir, SW_HIDE,
+    ewWaitUntilTerminated, ResultCode) then
+  begin
+    Result := 'Setup could not stop the Amazify background daemon. ' +
+      'Close Amazify and try the installation again.';
+    Exit;
+  end;
+
+  if ResultCode <> 0 then
+    Result := 'The Amazify background daemon did not stop cleanly. ' +
+      'Close Amazify and try the installation again.';
+end;
+
 { Hook: add the install directory to user PATH after installation. }
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
+  begin
     AddToUserPath(ExpandConstant('{app}'));
+    if not WizardIsTaskSelected('startupdaemon') then
+      RegDeleteValue(HKEY_CURRENT_USER,
+        'Software\Microsoft\Windows\CurrentVersion\Run', 'Amazify');
+  end;
 end;
 
 { Hook: remove the install directory from user PATH on uninstall. }

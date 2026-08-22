@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import secrets
 import socket
 from dataclasses import dataclass
@@ -28,6 +29,15 @@ def find_free_local_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def load_saved_devtools_port(root: Path) -> int | None:
+    try:
+        data = json.loads((root / "devtools_state.json").read_text(encoding="utf-8"))
+        port = int(data.get("last_port", 0)) if isinstance(data, dict) else 0
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return None
+    return port if 0 < port <= 65535 else None
+
+
 @dataclass(slots=True)
 class RuntimeConfig:
     state_dir: Path
@@ -50,12 +60,20 @@ class RuntimeConfig:
         state_dir = root
         plugin_dir = root / "plugins"
         log_dir = root / "logs"
+        selected_devtools_port = (
+            devtools_port
+            or load_saved_devtools_port(root)
+            or find_free_local_port()
+        )
+        selected_bridge_port = bridge_port or find_free_local_port()
+        while selected_bridge_port == selected_devtools_port:
+            selected_bridge_port = find_free_local_port()
         config = cls(
             state_dir=state_dir,
             plugin_dir=plugin_dir,
             log_dir=log_dir,
-            devtools_port=devtools_port or find_free_local_port(),
-            bridge_port=bridge_port or find_free_local_port(),
+            devtools_port=selected_devtools_port,
+            bridge_port=selected_bridge_port,
             bridge_token=secrets.token_urlsafe(32),
             manual_launcher=manual_launcher,
         )
@@ -82,6 +100,10 @@ class RuntimeConfig:
     @property
     def daemon_stop_file(self) -> Path:
         return self.state_dir / "daemon_stop"
+
+    @property
+    def daemon_launch_file(self) -> Path:
+        return self.state_dir / "daemon_launch.json"
 
     @property
     def welcome_state_file(self) -> Path:

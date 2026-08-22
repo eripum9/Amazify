@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 from amazify.devtools import DevToolsClient, DevToolsConnectionClosed, Target
 
@@ -18,6 +19,17 @@ def make_client() -> DevToolsClient:
 
 
 class DevToolsClientTests(unittest.TestCase):
+    def test_evaluate_nowait_sends_without_receiving(self) -> None:
+        client = make_client()
+        client._ws = mock.Mock()
+
+        message_id = client.evaluate_nowait("window.test = true")
+
+        self.assertEqual(message_id, 1)
+        client._ws.send.assert_called_once()
+        self.assertIn('"method": "Runtime.evaluate"', client._ws.send.call_args.args[0])
+        client._ws.recv.assert_not_called()
+
     def test_empty_websocket_read_is_connection_closed(self) -> None:
         class EmptySocket:
             def recv(self) -> str:

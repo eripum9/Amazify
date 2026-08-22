@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from amazify.plugin_manager import PluginError, PluginManager
 
@@ -12,6 +13,17 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 class PluginManagerTests(unittest.TestCase):
+    def test_cached_catalog_payload_never_fetches_network(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manager = PluginManager(root / "plugins", root / "state.json")
+
+            with mock.patch.object(manager, "_read_json_url") as read_json:
+                payload = manager.cached_catalog_payload()
+
+            read_json.assert_not_called()
+            self.assertEqual(payload["plugins"], [])
+
     def test_lists_github_catalog_plugins_without_installing_them(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -27,10 +39,8 @@ class PluginManagerTests(unittest.TestCase):
             self.assertEqual(
                 ids,
                 {
-                    "amazify.resume-last-song",
                     "amazify.true-big-mode",
-                    "amazify.button.focus-mode",
-                    "amazify.theme.dark-green",
+                    "amazify.theme.signal-studio",
                 },
             )
             self.assertFalse(any(plugin["installed"] for plugin in catalog))

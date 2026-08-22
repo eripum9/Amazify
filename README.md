@@ -15,10 +15,10 @@ Amazify is a Windows prototype that customizes the Amazon Music desktop app at r
 - **Runtime injection** — injects a reversible runtime into Amazon Music without touching app files
 - **In-app marketplace** — browse, download, and update plugins from inside Amazon Music
 - **Plugin catalog** — GitHub-backed catalog with explicit Download/Update/Reinstall actions
-- **Background daemon** — headless daemon with `start` / `stop` / `status` CLI commands
-- **DevTools reconnect** — automatic reconnect when Amazon Music restarts
+- **Persistent launch supervisor** — starts at sign-in, accepts launch requests, and stays idle when Amazon Music closes
+- **Fast DevTools reconnect** — discovers ports from running Amazon Music processes and probes candidates concurrently
 - **Localhost bridge** — WebSocket bridge with DevTools binding fallback
-- **Stock plugins** — four ready-to-use sample plugins (themes, layout, resume, focus mode)
+- **Stock plugins** — a curated set of tested layout and interface plugins
 - **Permissioned metadata** — each plugin declares required permissions in its manifest
 - **GUI installer** — Inno Setup 6 installer with optional desktop and taskbar shortcuts
 
@@ -52,7 +52,7 @@ The GUI installer is not yet published as a public release. Build it locally wit
 .\dist\AmazifySetup.exe
 ```
 
-The installer copies `amazify.exe` and the windowless launcher (`amazifyw\`) into `%LOCALAPPDATA%\Programs\Amazify`, adds that folder to the user `PATH`, registers a user-level uninstall entry, and creates a **Start Menu** shortcut named **Amazon Music (Amazify)**.
+The installer copies `amazify.exe` and the windowless launcher (`amazifyw\`) into `%LOCALAPPDATA%\Programs\Amazify`, adds that folder to the user `PATH`, registers a user-level uninstall entry, and creates a **Start Menu** shortcut named **Amazon Music (Amazify)**. Its Additional Tasks page can enable startup-at-sign-in, a Desktop shortcut, and taskbar pinning. Startup-at-sign-in is selected by default.
 
 > **Note:** Taskbar pinning is best-effort. If Windows refuses the programmatic pin, pin **Amazon Music (Amazify)** manually from Start.
 
@@ -72,7 +72,7 @@ Launch or connect to Amazon Music and inject Amazify:
 amazify run
 ```
 
-`amazify run` starts the background daemon and returns immediately. The daemon keeps running after the terminal closes. For foreground/debug mode:
+`amazify run` starts the daemon if needed, sends it an Amazon Music open/focus request, and returns immediately. The daemon keeps running after the terminal and Amazon Music close. For foreground/debug mode:
 
 ```powershell
 amazify run --foreground
@@ -159,9 +159,7 @@ Source lives in `sample_plugins/`. These are catalog source folders — they are
 | Plugin ID | Description |
 |---|---|
 | `amazify.true-big-mode` | Full-window lyrics layout with custom overlay, replaces Amazon Music Big Mode |
-| `amazify.resume-last-song` | Saves and restores the current track across Amazon Music restarts |
-| `amazify.theme.dark-green` | Green color theme for Amazon Music |
-| `amazify.button.focus-mode` | Header button that toggles a quieter focus mode |
+| `amazify.theme.signal-studio` | Full interface redesign with a navigation rail, reactive ambience, custom typography, and floating transport |
 
 Downloaded plugins are **disabled by default**. Enable them from the Amazify marketplace inside Amazon Music.
 

@@ -12,8 +12,10 @@ from amazify.cli import (
     connect_or_launch_result,
     daemon_spawn_command,
     main,
+    consume_daemon_launch_request,
     recent_devtools_ports,
     remember_devtools_port,
+    request_daemon_launch,
     run,
     show_first_run_welcome,
 )
@@ -75,7 +77,7 @@ class CliDevToolsPortTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             welcome.assert_called_once_with(config)
-            start_daemon.assert_called_once_with(args, config=config)
+            start_daemon.assert_called_once_with(args, config=config, request_launch=True)
 
     def test_run_once_uses_foreground_mode(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -179,6 +181,34 @@ class CliDevToolsPortTests(unittest.TestCase):
 
         self.assertEqual(command, [str(sibling.resolve()), "daemon", "run"])
 
+    def test_daemon_spawn_command_can_launch_on_worker_start(self) -> None:
+        args = mock.Mock(
+            devtools_port=None,
+            bridge_port=None,
+            manual_launcher=None,
+            connect_only=False,
+            verbose=False,
+        )
+        with (
+            mock.patch("amazify.cli.sys.frozen", False, create=True),
+            mock.patch("amazify.cli.sys.executable", "python.exe"),
+        ):
+            command = daemon_spawn_command(args, launch_on_start=True)
+
+        self.assertEqual(
+            command,
+            ["python.exe", "-m", "amazify", "daemon", "run", "--launch-on-start"],
+        )
+
+    def test_launch_request_file_is_consumed_once(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            config = make_config(Path(temp))
+            request_daemon_launch(config)
+
+            self.assertTrue(config.daemon_launch_file.exists())
+            self.assertTrue(consume_daemon_launch_request(config))
+            self.assertFalse(consume_daemon_launch_request(config))
+
     def test_recent_devtools_ports_prefers_state_then_recent_log_entries(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             config = make_config(Path(temp))
@@ -240,7 +270,8 @@ class CliDevToolsPortTests(unittest.TestCase):
             candidates = [LaunchCandidate("aumid", "AmazonMusic_app!App", "Amazon Music")]
             with (
                 mock.patch("amazify.cli.DevToolsHttp", FakeDevToolsHttp),
-                mock.patch("amazify.cli.discover_launch_candidates", return_value=candidates),
+                mock.patch("amazify.cli.runtime_launch_candidates", return_value=candidates),
+                mock.patch("amazify.cli.amazon_music_is_running", return_value=False),
                 mock.patch("amazify.cli.launch_candidate") as launch_candidate,
             ):
                 result = connect_or_launch_result(

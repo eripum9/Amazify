@@ -2,14 +2,20 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import re
 import subprocess
+import ctypes
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from ctypes import wintypes
 
 from .config import DEFAULT_KNOWN_AUMID
 
 
 LOG = logging.getLogger(__name__)
+DEVTOOLS_PORT_RE = re.compile(r"^--remote-debugging-port=(\d+)$")
 
 
 class LaunchError(RuntimeError):
@@ -44,6 +50,68 @@ def discover_launch_candidates(manual_launcher: str | None = None) -> list[Launc
         LaunchCandidate("aumid", DEFAULT_KNOWN_AUMID, "Known Amazon Music Store AUMID"),
     )
     return candidates
+
+
+def runtime_launch_candidates(manual_launcher: str | None = None) -> list[LaunchCandidate]:
+    """Return the minimal launch set used by the latency-sensitive runtime path."""
+    if manual_launcher:
+        return [_manual_candidate(manual_launcher)]
+    return [
+        LaunchCandidate("aumid", DEFAULT_KNOWN_AUMID, "Amazon Music AUMID"),
+    ]
+
+
+def running_amazon_music_devtools_ports() -> list[int]:
+    ports: list[int] = []
+    try:
+        import psutil
+    except ImportError:
+        return ports
+
+    for process in psutil.process_iter(["name", "exe", "cmdline"]):
+        try:
+            info = process.info
+            if not _looks_like_amazon_music_process(
+                str(info.get("name") or ""),
+                str(info.get("exe") or ""),
+            ):
+                continue
+            for argument in info.get("cmdline") or []:
+                match = DEVTOOLS_PORT_RE.match(str(argument))
+                if not match:
+                    continue
+                port = int(match.group(1))
+                if 0 < port <= 65535 and port not in ports:
+                    ports.append(port)
+        except (OSError, ValueError, TypeError, psutil.Error):
+            continue
+    return ports
+
+
+def amazon_music_is_running() -> bool:
+    try:
+        import psutil
+    except ImportError:
+        return False
+
+    for process in psutil.process_iter(["name", "exe", "cmdline"]):
+        try:
+            info = process.info
+            if not _looks_like_amazon_music_process(
+                str(info.get("name") or ""),
+                str(info.get("exe") or ""),
+            ):
+                continue
+            arguments = [str(item) for item in (info.get("cmdline") or [])]
+            if not any(argument.startswith("--type=") for argument in arguments):
+                return True
+        except (OSError, TypeError, psutil.Error):
+            continue
+    return False
+
+
+def focus_amazon_music() -> None:
+    _activate_aumid(DEFAULT_KNOWN_AUMID, "")
 
 
 def launch_candidate(candidate: LaunchCandidate, devtools_port: int) -> None:
@@ -150,6 +218,85 @@ $rows | ConvertTo-Json -Depth 4
 
 
 def _activate_aumid(app_id: str, args: str) -> None:
+    if os.name == "nt":
+        try:
+            _activate_aumid_native(app_id, args)
+            return
+        except (OSError, RuntimeError):
+            LOG.debug("Native AUMID activation failed; using PowerShell fallback", exc_info=True)
+    _activate_aumid_powershell(app_id, args)
+
+
+class _GUID(ctypes.Structure):
+    _fields_ = [
+        ("Data1", wintypes.DWORD),
+        ("Data2", wintypes.WORD),
+        ("Data3", wintypes.WORD),
+        ("Data4", ctypes.c_ubyte * 8),
+    ]
+
+    @classmethod
+    def from_string(cls, value: str) -> "_GUID":
+        parsed = uuid.UUID(value)
+        raw = parsed.bytes_le
+        return cls.from_buffer_copy(raw)
+
+
+def _activate_aumid_native(app_id: str, args: str) -> int:
+    ole32 = ctypes.windll.ole32
+    ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+    ole32.CoInitializeEx.restype = ctypes.c_long
+    ole32.CoCreateInstance.argtypes = [
+        ctypes.POINTER(_GUID),
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.POINTER(_GUID),
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    ole32.CoCreateInstance.restype = ctypes.c_long
+    ole32.CoUninitialize.argtypes = []
+    ole32.CoUninitialize.restype = None
+    clsid = _GUID.from_string("45BA127D-10A8-46EA-8AB7-56EA9078943C")
+    iid = _GUID.from_string("2E941141-7F97-4756-BA1D-9DECDE894A3D")
+    instance = ctypes.c_void_p()
+    coinit_hr = ole32.CoInitializeEx(None, 0x2)
+    should_uninitialize = coinit_hr >= 0
+    if coinit_hr < 0 and coinit_hr != -2147417850:
+        raise RuntimeError(f"CoInitializeEx failed: 0x{coinit_hr & 0xFFFFFFFF:08X}")
+    try:
+        hr = ole32.CoCreateInstance(
+            ctypes.byref(clsid),
+            None,
+            0x1,
+            ctypes.byref(iid),
+            ctypes.byref(instance),
+        )
+        if hr < 0 or not instance.value:
+            raise RuntimeError(f"CoCreateInstance failed: 0x{hr & 0xFFFFFFFF:08X}")
+        interface = ctypes.cast(instance, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p)))
+        activate = ctypes.WINFUNCTYPE(
+            ctypes.c_long,
+            ctypes.c_void_p,
+            wintypes.LPCWSTR,
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+        )(interface.contents[3])
+        process_id = wintypes.DWORD()
+        hr = activate(instance, app_id, args, 0, ctypes.byref(process_id))
+        if hr < 0:
+            raise RuntimeError(f"ActivateApplication failed: 0x{hr & 0xFFFFFFFF:08X}")
+        return int(process_id.value)
+    finally:
+        if instance.value:
+            interface = ctypes.cast(instance, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p)))
+            release = ctypes.WINFUNCTYPE(wintypes.ULONG, ctypes.c_void_p)(interface.contents[2])
+            release(instance)
+        if should_uninitialize:
+            ole32.CoUninitialize()
+
+
+def _activate_aumid_powershell(app_id: str, args: str) -> None:
     script = f"""
 $ErrorActionPreference = 'Stop'
 $code = @"
@@ -254,6 +401,17 @@ def _looks_like_amazon_music_start_app(name: str, app_id: str) -> bool:
         "amazonmusic" in lowered_app_id
         and "amazonmobilellc" in lowered_app_id
         and "!" in app_id
+    )
+
+
+def _looks_like_amazon_music_process(name: str, executable: str) -> bool:
+    lowered_name = name.lower()
+    lowered_executable = executable.lower()
+    if lowered_name != "amazon music.exe":
+        return False
+    return (
+        "amazonmobilellc.amazonmusic_" in lowered_executable
+        or lowered_executable.endswith("amazon music.exe")
     )
 
 
