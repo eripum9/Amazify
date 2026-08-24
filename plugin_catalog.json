@@ -5,12 +5,13 @@
       "id": "amazify.true-big-mode",
       "trust": "stock",
       "repository": "eripum9/Amazify",
-      "sourceCommit": "b57c1987748fe8044ad0d3e96fd1af042c04096e",
+      "sourceCommit": "d0426c0fc60c5d382b57930cd5778459e86b0f8a",
       "pluginRoot": "sample_plugins/amazify.true-big-mode",
+      "minimumAmazifyVersion": "1.1.0",
       "manifest": {
         "id": "amazify.true-big-mode",
         "name": "True Big Mode",
-        "version": "0.1.5",
+        "version": "0.2.0",
         "author": "Amazify",
         "type": "ui",
         "description": "Turns Amazon Music Big Mode into a cleaner full-screen lyrics view with album-art exit behavior.",
@@ -32,18 +33,72 @@
       "files": [
         {
           "path": "manifest.json",
-          "sha256": "14eeaa369ecb6938c801c10c0515209b1fe1931af386ecc2a20f55f3d027126c",
+          "sha256": "37286f2198de7ef3dfb8607ea96b4a6234a26022d4ef241695dc5e4357492a32",
           "size": 426
         },
         {
           "path": "plugin.js",
-          "sha256": "be9a2d4a7f5888e69a2851725dc01c72041ee9fc021ed9beef9a25deb825a10b",
-          "size": 59334
+          "sha256": "74f9a9cd23bf2da239501316fe0fe778c06bf57050d761eaad2e411062380672",
+          "size": 41774
         },
         {
           "path": "style.css",
-          "sha256": "af44e88810e47026af7334bdb8a2a493104cdf7601765fb1704a313ccbf13d55",
-          "size": 31219
+          "sha256": "9c118e9822620fbbd87f387e930ea524c43f509e4836c18609ae5ccb9a9a9b90",
+          "size": 29846
+        }
+      ]
+    },
+    {
+      "id": "amazify.karaoke-lyrics",
+      "trust": "stock",
+      "repository": "eripum9/Amazify",
+      "sourceCommit": "d0426c0fc60c5d382b57930cd5778459e86b0f8a",
+      "pluginRoot": "sample_plugins/amazify.karaoke-lyrics",
+      "minimumAmazifyVersion": "1.1.0",
+      "manifest": {
+        "id": "amazify.karaoke-lyrics",
+        "name": "Karaoke Lyrics",
+        "version": "0.1.0",
+        "author": "Amazify",
+        "type": "ui",
+        "description": "Adds smooth line, word, and syllable-synced lyrics to Amazon Music's native lyrics view.",
+        "entry": "plugin.js",
+        "styles": [
+          "base.css",
+          "normal.css"
+        ],
+        "assets": {},
+        "permissions": [
+          "dom-read",
+          "dom-write",
+          "dom-style",
+          "lyrics-provider"
+        ],
+        "amazonMusic": {
+          "testedAppVersions": [],
+          "target": "desktop"
+        }
+      },
+      "files": [
+        {
+          "path": "manifest.json",
+          "sha256": "2ba82cdea158a5ea36ca870a8d4d2b0895ab6a2135e85059a4c8c3e76abae59e",
+          "size": 452
+        },
+        {
+          "path": "plugin.js",
+          "sha256": "31d28cfc705ae7a867daa4de5df4a07cbeeaeaf8152f865fd3520293f0778f4c",
+          "size": 29768
+        },
+        {
+          "path": "base.css",
+          "sha256": "4dd11a8b02475221f313688e9c15965a4574192b9884694d660b796d6f7164b6",
+          "size": 2977
+        },
+        {
+          "path": "normal.css",
+          "sha256": "b549a742969344d70f273cf7445211acfbb80c565c3006ec27a1525acccb4977",
+          "size": 531
         }
       ]
     },
