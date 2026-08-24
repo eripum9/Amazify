@@ -49,69 +49,16 @@
       ]
     },
     {
-      "id": "amazify.karaoke-lyrics",
-      "trust": "stock",
-      "repository": "eripum9/Amazify",
-      "sourceCommit": "57162d9cba4414af3223477171d7a4e2ab483f9a",
-      "pluginRoot": "sample_plugins/amazify.karaoke-lyrics",
-      "minimumAmazifyVersion": "1.1.0",
-      "manifest": {
-        "id": "amazify.karaoke-lyrics",
-        "name": "Karaoke Lyrics",
-        "version": "0.1.0",
-        "author": "Amazify",
-        "type": "ui",
-        "description": "Adds smooth line, word, and syllable-synced lyrics to Amazon Music's native lyrics view.",
-        "entry": "plugin.js",
-        "styles": [
-          "base.css",
-          "normal.css"
-        ],
-        "assets": {},
-        "permissions": [
-          "dom-read",
-          "dom-write",
-          "dom-style",
-          "lyrics-provider"
-        ],
-        "amazonMusic": {
-          "testedAppVersions": [],
-          "target": "desktop"
-        }
-      },
-      "files": [
-        {
-          "path": "manifest.json",
-          "sha256": "2ba82cdea158a5ea36ca870a8d4d2b0895ab6a2135e85059a4c8c3e76abae59e",
-          "size": 452
-        },
-        {
-          "path": "plugin.js",
-          "sha256": "04fcfcd787eacaa0132f3bfaf3625e1b3dda6362ad1ef183de98a336c8d2258f",
-          "size": 31037
-        },
-        {
-          "path": "base.css",
-          "sha256": "0226c6f75eca6a21475c7224c03ff58d97cf000b5c3ae331d567e2fd1860cd1c",
-          "size": 3151
-        },
-        {
-          "path": "normal.css",
-          "sha256": "b549a742969344d70f273cf7445211acfbb80c565c3006ec27a1525acccb4977",
-          "size": 531
-        }
-      ]
-    },
-    {
       "id": "amazify.theme.signal-studio",
       "trust": "stock",
       "repository": "eripum9/Amazify",
-      "sourceCommit": "b57c1987748fe8044ad0d3e96fd1af042c04096e",
+      "sourceCommit": "df45883981417d6a7fd64110deb8e4595bd90e47",
       "pluginRoot": "sample_plugins/amazify.theme.signal-studio",
+      "minimumAmazifyVersion": "1.1.0",
       "manifest": {
         "id": "amazify.theme.signal-studio",
         "name": "Signal Studio",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "author": "Amazify",
         "type": "theme",
         "description": "Rebuilds Amazon Music as a tactile studio interface with a navigation rail, editorial library views, reactive ambience, and a floating transport.",
@@ -128,6 +75,23 @@
           "dom-write",
           "dom-style"
         ],
+        "minimumAmazifyVersion": "1.1.0",
+        "settings": [
+          {
+            "id": "primaryColor",
+            "type": "color",
+            "label": "Main color",
+            "description": "Active navigation, playback progress, and primary highlights.",
+            "default": "#d9ff43"
+          },
+          {
+            "id": "secondaryColor",
+            "type": "color",
+            "label": "Secondary color",
+            "description": "Hover states, secondary highlights, warnings, and gradients.",
+            "default": "#ff745c"
+          }
+        ],
         "amazonMusic": {
           "testedAppVersions": [],
           "target": "desktop"
@@ -136,18 +100,18 @@
       "files": [
         {
           "path": "manifest.json",
-          "sha256": "6318bff277e07792a78700bf12c7a9b96c88efefbcc69ab4cf0f03a62552c226",
-          "size": 591
+          "sha256": "6ca0f114a8dc5023d0afb257cd9e79f7dc9280da5fcefe572a8c11735c0bf61e",
+          "size": 1065
         },
         {
           "path": "plugin.js",
-          "sha256": "454c7fba572afdce5e743832d3b2e7790cbe2f07f20145c8bed3a310ad43917f",
-          "size": 12287
+          "sha256": "a8e9fb7f5b0c6dc4a98dc3d882a775420d4460e3589b03362f88c8555df20f8e",
+          "size": 13940
         },
         {
           "path": "theme.css",
-          "sha256": "efbae693b643c74f0aad57a68a28ad1a4e04bd7ef18956fbc9fc7d483620e72f",
-          "size": 106679
+          "sha256": "19c9b431e8ff4325413c66c3af4cc767e28c7ee6147521a41d7ef9b817777ff9",
+          "size": 107157
         },
         {
           "path": "assets/space-grotesk.woff2",
