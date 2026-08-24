@@ -10,6 +10,11 @@ Add a `settings` array to `manifest.json`. Amazify validates and bounds every
 definition before catalog installation. Setting IDs must be unique and begin
 with a lowercase ASCII letter.
 
+Plugins that depend on newer runtime APIs should also declare
+`"minimumAmazifyVersion": "1.1.0"` at the manifest root. The value must use
+exact `major.minor.patch` syntax; incompatible plugins cannot be installed or
+enabled.
+
 Supported types:
 
 | Type | Required fields | Stored value |
@@ -47,6 +52,14 @@ plugin assets.
         {"value": "compact", "label": "Compact"},
         {"value": "comfortable", "label": "Comfortable"}
       ]
+    },
+    {
+      "id": "backgroundImage",
+      "type": "image",
+      "label": "Background image",
+      "default": "",
+      "accept": ["image/png", "image/webp"],
+      "maxBytes": 1048576
     }
   ]
 }

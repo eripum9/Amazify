@@ -12,6 +12,7 @@
     "signal-grain": "assets/grain.svg"
   },
   "permissions": ["dom-read", "dom-write", "dom-style"],
+  "minimumAmazifyVersion": "1.1.0",
   "settings": [
     {
       "id": "primaryColor",

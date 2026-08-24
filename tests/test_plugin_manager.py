@@ -111,6 +111,25 @@ class FakeRedirectResponse:
 
 
 class PluginManagerTests(unittest.TestCase):
+    def test_manifest_validates_and_exposes_minimum_amazify_version(self) -> None:
+        manifest = demo_manifest()
+        manifest["minimumAmazifyVersion"] = "1.1.0"
+
+        parsed = PluginManifest.from_dict(manifest)
+
+        self.assertEqual(parsed.minimum_amazify_version, "1.1.0")
+        self.assertEqual(
+            parsed.to_public_dict()["minimumAmazifyVersion"], "1.1.0"
+        )
+        for invalid in ["1.1", "v1.1.0", "1.1.0-beta"]:
+            with self.subTest(version=invalid):
+                candidate = demo_manifest()
+                candidate["minimumAmazifyVersion"] = invalid
+                with self.assertRaisesRegex(
+                    PluginError, "invalid minimumAmazifyVersion"
+                ):
+                    PluginManifest.from_dict(candidate)
+
     def test_manifest_normalizes_supported_plugin_settings(self) -> None:
         manifest = demo_manifest()
         manifest["settings"] = [
@@ -312,6 +331,48 @@ class PluginManagerTests(unittest.TestCase):
             self.assertEqual(
                 snapshot["source"]["assets"][0]["mimeType"], "image/svg+xml"
             )
+
+    def test_incompatible_manifest_cannot_be_installed_or_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = demo_manifest()
+            manifest["minimumAmazifyVersion"] = "99.0.0"
+            files = demo_files(manifest)
+            manager = catalog_manager(
+                root,
+                files,
+                catalog_plugin(files, manifest=manifest),
+            )
+
+            catalog = manager.catalog_plugins(force_refresh=True)[0]
+            self.assertFalse(catalog["compatible"])
+            with self.assertRaisesRegex(PluginError, "requires Amazify 99.0.0"):
+                manager.install_from_catalog("demo.plugin")
+
+            plugin_root = root / "plugins" / "demo.plugin"
+            plugin_root.mkdir(parents=True)
+            for relative, content in files.items():
+                destination = plugin_root / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(content)
+            self.assertFalse(manager.public_plugins()[0]["compatible"])
+            with self.assertRaisesRegex(PluginError, "requires Amazify 99.0.0"):
+                manager.enable("demo.plugin")
+
+    def test_catalog_and_manifest_minimum_versions_must_match(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = demo_manifest()
+            manifest["minimumAmazifyVersion"] = "1.1.0"
+            files = demo_files(manifest)
+            plugin = catalog_plugin(files, manifest=manifest)
+            plugin["minimumAmazifyVersion"] = "1.2.0"
+            manager = catalog_manager(root, files, plugin)
+
+            with self.assertRaisesRegex(
+                PluginError, "minimumAmazifyVersion does not match"
+            ):
+                manager.catalog_plugins(force_refresh=True)
 
     def test_community_plugin_never_auto_enables_on_first_install(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

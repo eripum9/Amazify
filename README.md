@@ -160,6 +160,7 @@ A plugin is a directory containing `manifest.json` plus optional JavaScript, CSS
     "logo": "assets/logo.svg"
   },
   "permissions": ["dom-read", "dom-write", "dom-style"],
+  "minimumAmazifyVersion": "1.1.0",
   "settings": [
     {
       "id": "accentColor",
@@ -177,6 +178,10 @@ A plugin is a directory containing `manifest.json` plus optional JavaScript, CSS
 ```
 
 Plugin JavaScript receives `Amazify`, `manifest`, and `source`. Return a cleanup function to undo listeners and runtime changes when the plugin is disabled. Plugin-owned DOM should use `data-amazify-plugin-id`, and every privileged capability should be declared in the manifest.
+
+Set `minimumAmazifyVersion` to the oldest compatible Amazify release using an
+exact `major.minor.patch` version. Amazify blocks installation and activation
+when the running app is older than that requirement.
 
 Installed marketplace entries open a plugin-specific settings view instead of
 showing Reinstall directly. That view renders validated manifest settings and

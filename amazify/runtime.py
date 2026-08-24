@@ -1610,9 +1610,12 @@ def build_runtime_script(
       ["catalog-sha256", "bundled"].includes(String(installedSecurity.method || "")) &&
       installedSecurity.verified !== true
     );
-    const incompatible = Boolean(catalog && catalog.compatible === false);
+    const incompatible = Boolean(
+      (catalog && catalog.compatible === false) ||
+      (installed && installed.compatible === false)
+    );
     const compatibilityDetail = incompatible
-      ? ` - requires Amazify ${{esc(catalog.minimumAmazifyVersion || "newer")}}`
+      ? ` - requires Amazify ${{esc(manifest.minimumAmazifyVersion || (catalog && catalog.minimumAmazifyVersion) || "newer")}}`
       : "";
     const trustDetail = channel === "community"
       ? "Third-party community code - review its source and permissions before enabling"
@@ -1625,7 +1628,7 @@ def build_runtime_script(
         ? `<button class="amazify-primary" type="button" data-amazify-install-plugin="${{esc(manifest.id)}}" ${{incompatible ? "disabled" : ""}}>Download</button>`
         : "";
     const toggleButton = isInstalled
-      ? `<button class="amazify-toggle" type="button" aria-label="Toggle ${{esc(manifest.name)}}" aria-pressed="${{installed.enabled ? "true" : "false"}}" data-amazify-toggle-plugin="${{esc(manifest.id)}}" ${{integrityFailed ? "disabled" : ""}}></button>`
+      ? `<button class="amazify-toggle" type="button" aria-label="Toggle ${{esc(manifest.name)}}" aria-pressed="${{installed.enabled ? "true" : "false"}}" data-amazify-toggle-plugin="${{esc(manifest.id)}}" ${{integrityFailed || incompatible ? "disabled" : ""}}></button>`
       : "";
     return `
       <div class="amazify-plugin-row" data-amazify-plugin-id="${{esc(manifest.id)}}">

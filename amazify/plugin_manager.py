@@ -34,6 +34,7 @@ GITHUB_OWNER_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
 GITHUB_REPOSITORY_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 DEFAULT_CATALOG_URL = (
     "https://raw.githubusercontent.com/eripum9/Amazify/main/plugin_catalog.json"
 )
@@ -119,6 +120,7 @@ class PluginManifest:
     assets: dict[str, str]
     permissions: list[str]
     settings: list[dict[str, Any]]
+    minimum_amazify_version: str
     amazon_music: dict[str, Any]
 
     @classmethod
@@ -160,6 +162,15 @@ class PluginManifest:
 
         assets = _normalize_assets(plugin_id, data.get("assets", {}))
         settings = _normalize_plugin_settings(plugin_id, data.get("settings", []))
+        minimum_amazify_version = str(
+            data.get("minimumAmazifyVersion", "")
+        ).strip()
+        if minimum_amazify_version and not VERSION_RE.fullmatch(
+            minimum_amazify_version
+        ):
+            raise PluginError(
+                f"Plugin {plugin_id} has invalid minimumAmazifyVersion"
+            )
         amazon_music = data.get("amazonMusic", {})
         if not isinstance(amazon_music, dict):
             raise PluginError(f"Plugin {plugin_id} amazonMusic must be an object")
@@ -176,6 +187,7 @@ class PluginManifest:
             assets=assets,
             permissions=list(permissions),
             settings=settings,
+            minimum_amazify_version=minimum_amazify_version,
             amazon_music=amazon_music,
         )
         if not manifest.entry and not manifest.styles:
@@ -195,6 +207,7 @@ class PluginManifest:
             "assets": dict(self.assets),
             "permissions": list(self.permissions),
             "settings": _json_copy(self.settings),
+            "minimumAmazifyVersion": self.minimum_amazify_version,
             "amazonMusic": dict(self.amazon_music),
         }
 
@@ -210,6 +223,11 @@ class PluginPackage:
         return {
             "manifest": self.manifest.to_public_dict(),
             "enabled": self.enabled,
+            "compatible": not self.manifest.minimum_amazify_version
+            or compare_versions(
+                __version__, self.manifest.minimum_amazify_version
+            )
+            >= 0,
             "rootName": self.root.name,
             "security": _json_copy(self.security),
         }
@@ -532,6 +550,13 @@ class PluginManager:
                         manifest=manifest,
                         enabled=requested_enabled
                         and (
+                            not manifest.minimum_amazify_version
+                            or compare_versions(
+                                __version__, manifest.minimum_amazify_version
+                            )
+                            >= 0
+                        )
+                        and (
                             not requires_integrity or security.get("verified") is True
                         ),
                         security=security,
@@ -568,6 +593,13 @@ class PluginManager:
     def enable(self, plugin_id: str) -> PluginPackage:
         with self._lock:
             package = self.get(plugin_id)
+            required = package.manifest.minimum_amazify_version
+            if required and compare_versions(__version__, required) < 0:
+                self._state["enabled"][package.manifest.id] = False
+                self._save_state()
+                raise PluginError(
+                    f"Plugin {package.manifest.id} requires Amazify {required} or newer"
+                )
             if (
                 package.security.get("method") in {"catalog-sha256", "bundled"}
                 and package.security.get("verified") is not True
@@ -672,13 +704,26 @@ class PluginManager:
                 f"Catalog plugin {manifest.id} sourceCommit must be an immutable 40-character lowercase commit"
             )
         plugin_root = self._normalize_relative_path(_required_str(item, "pluginRoot"))
-        minimum_amazify_version = str(item.get("minimumAmazifyVersion", "")).strip()
-        if minimum_amazify_version and not re.fullmatch(
-            r"\d+\.\d+\.\d+", minimum_amazify_version
+        catalog_minimum_version = str(
+            item.get("minimumAmazifyVersion", "")
+        ).strip()
+        if catalog_minimum_version and not VERSION_RE.fullmatch(
+            catalog_minimum_version
         ):
             raise PluginError(
                 f"Catalog plugin {manifest.id} has invalid minimumAmazifyVersion"
             )
+        if (
+            catalog_minimum_version
+            and manifest.minimum_amazify_version
+            and catalog_minimum_version != manifest.minimum_amazify_version
+        ):
+            raise PluginError(
+                f"Catalog plugin {manifest.id} minimumAmazifyVersion does not match its manifest"
+            )
+        minimum_amazify_version = (
+            manifest.minimum_amazify_version or catalog_minimum_version
+        )
 
         files = item.get("files")
         if not isinstance(files, list) or not files:
