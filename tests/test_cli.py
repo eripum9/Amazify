@@ -81,8 +81,12 @@ class CliDevToolsPortTests(unittest.TestCase):
             client.evaluate.assert_called_once()
             script = client.evaluate.call_args.args[0]
             cleanup_index = script.index("NATIVE_DISPATCH_EVENT(window")
+            ownership_cleanup_index = script.index(
+                "document.querySelectorAll('[data-amazify-plugin-id]"
+            )
             self.assertLess(script.index("const NATIVE_JSON_STRINGIFY"), cleanup_index)
-            self.assertLess(cleanup_index, script.index("const BRIDGE_TOKEN"))
+            self.assertLess(cleanup_index, ownership_cleanup_index)
+            self.assertLess(ownership_cleanup_index, script.index("const BRIDGE_TOKEN"))
 
     def test_local_catalog_requires_source_build_opt_in(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

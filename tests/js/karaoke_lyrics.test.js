@@ -30,6 +30,14 @@ test("syllables group into words without synthesized timing", () => {
   assert.equal(words.length, 2);
   assert.equal(words[0].text, "Kara");
   assert.equal(words[0].syllables.length, 2);
+  assert.equal(words[0].startMs, 100);
+  assert.equal(words[0].endMs, 300);
+});
+
+test("static string payloads remain readable", () => {
+  const model = context.Karaoke.normalizeSpicy({ Type: "Static", Content: ["First line", "Second line"] }, "amazon:test");
+  assert.equal(model.type, "static");
+  assert.deepEqual(Array.from(model.lines, (line) => line.text), ["First line", "Second line"]);
 });
 
 test("binary search and progress are deterministic", () => {

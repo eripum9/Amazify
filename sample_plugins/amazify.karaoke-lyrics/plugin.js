@@ -37,8 +37,14 @@ Karaoke.readTrack = function () {
     hasLyrics: Boolean(raw.hasLyrics || lyricsData),
     amazonLyrics: lyricsData,
     currentTimeMs: Math.max(0, Number(progress.currentTime || 0)),
-    playing: String((vue && vue.playerModel && vue.playerModel.state) || "").toLowerCase() === "playing"
+    playing: Karaoke.isPlaying()
   };
+};
+
+Karaoke.isPlaying = function () {
+  const transport = document.querySelector("#transportContainer");
+  const vue = transport && transport.__vue__;
+  return String((vue && vue.playerModel && vue.playerModel.state) || "").toLowerCase() === "playing";
 };
 
 Karaoke.readPlaybackTime = function () {
@@ -136,8 +142,7 @@ Karaoke.number = function (value) {
 };
 
 Karaoke.timeMs = function (value) {
-  const parsed = Karaoke.number(value);
-  return parsed > 0 && parsed < 10000 ? parsed * 1000 : parsed;
+  return Karaoke.number(value);
 };
 
 Karaoke.normalizeWords = function (syllables) {
@@ -173,11 +178,12 @@ Karaoke.normalizeSpicy = function (packed, trackKey) {
   const content = Array.isArray(raw.Content) ? raw.Content : (Array.isArray(raw.content) ? raw.content : []);
   const lines = [];
   content.forEach(function (entry, lineIndex) {
-    if (!entry || typeof entry !== "object") return;
-    const lead = entry.Lead || entry.lead || entry;
+    if (!entry) return;
+    const item = typeof entry === "object" ? entry : { Text: String(entry) };
+    const lead = item.Lead || item.lead || item;
     const syllables = lead && (lead.Syllables || lead.syllables);
     const words = Karaoke.normalizeWords(syllables);
-    let text = String((lead && (lead.Text || lead.text)) || entry.Text || entry.text || "").trim();
+    let text = String((lead && (lead.Text || lead.text)) || item.Text || item.text || "").trim();
     if (!text && words.length) text = words.map(function (word) { return word.text; }).join(" ");
     if (!text) return;
     let startMs = Karaoke.timeMs(lead.StartTime != null ? lead.StartTime : lead.startTime);
@@ -192,8 +198,8 @@ Karaoke.normalizeSpicy = function (packed, trackKey) {
       startMs: startMs,
       endMs: Math.max(startMs, endMs),
       words: words,
-      translation: String(entry.Translation || entry.translation || ""),
-      background: Boolean(entry.Background || entry.background)
+      translation: String(item.Translation || item.translation || ""),
+      background: Boolean(item.Background || item.background)
     });
   });
   if (!lines.length) return null;
@@ -255,6 +261,7 @@ Karaoke.progress = function (timeMs, startMs, endMs) {
 Karaoke.Renderer = function (onSeek) {
   this.node = document.createElement("div");
   this.node.className = "amazify-karaoke-host";
+  this.node.dataset.amazifyPluginId = "amazify.karaoke-lyrics";
   this.node.dataset.presentation = "normal";
   this.scroller = document.createElement("div");
   this.scroller.className = "amazify-karaoke-scroller";
@@ -265,7 +272,7 @@ Karaoke.Renderer = function (onSeek) {
   this.activeLine = -1;
   this.activeWord = -1;
   this.manualUntil = 0;
-  this.programmaticScroll = false;
+  this.programmaticUntil = 0;
   this.scrollTimer = 0;
   this.onSeek = onSeek;
   const renderer = this;
@@ -273,8 +280,12 @@ Karaoke.Renderer = function (onSeek) {
     renderer.scroller.addEventListener(name, function () { renderer.markManual(); }, { passive: true });
   });
   this.scroller.addEventListener("scroll", function () {
-    if (!renderer.programmaticScroll) renderer.markManual();
+    if (performance.now() >= renderer.programmaticUntil) renderer.markManual();
   }, { passive: true });
+  this.resizeObserver = typeof ResizeObserver === "function"
+    ? new ResizeObserver(function () { renderer.centerActive(false); })
+    : null;
+  if (this.resizeObserver) this.resizeObserver.observe(this.node);
 };
 
 Karaoke.Renderer.prototype.markManual = function () {
@@ -290,7 +301,7 @@ Karaoke.Renderer.prototype.setModel = function (model) {
   this.model = model;
   this.activeLine = -1;
   this.activeWord = -1;
-  this.scroller.replaceChildren();
+  while (this.scroller.firstChild) this.scroller.removeChild(this.scroller.firstChild);
   this.lineNodes = [];
   this.wordNodes = [];
   const renderer = this;
@@ -369,10 +380,9 @@ Karaoke.Renderer.prototype.update = function (timeMs, forceScroll) {
 Karaoke.Renderer.prototype.centerActive = function (force) {
   const target = this.lineNodes[this.activeLine];
   if (!target || (!force && performance.now() < this.manualUntil)) return;
-  this.programmaticScroll = true;
-  target.scrollIntoView({ behavior: "smooth", block: "center" });
-  const renderer = this;
-  requestAnimationFrame(function () { renderer.programmaticScroll = false; });
+  const reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  this.programmaticUntil = performance.now() + (reducedMotion ? 100 : 1200);
+  target.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
 };
 
 Karaoke.Renderer.prototype.claim = function (container, presentation) {
@@ -384,6 +394,7 @@ Karaoke.Renderer.prototype.claim = function (container, presentation) {
 
 Karaoke.Renderer.prototype.destroy = function () {
   clearTimeout(this.scrollTimer);
+  if (this.resizeObserver) this.resizeObserver.disconnect();
   this.node.remove();
 };
 
@@ -537,6 +548,7 @@ Karaoke.Session.prototype.startRaf = function () {
     session.raf = 0;
     if (session.destroyed || !session.model || session.model.type === "static" || !session.visible()) return;
     session.renderer.update(Karaoke.readPlaybackTime(), false);
+    if (!Karaoke.isPlaying()) return;
     session.raf = requestAnimationFrame(frame);
   }
   this.raf = requestAnimationFrame(frame);
@@ -600,6 +612,7 @@ Karaoke.Integration.prototype.sync = function () {
   wrapper.setAttribute("data-amazify-karaoke-status", this.session.status);
   wrapper.classList.toggle("amazify-karaoke-enhanced", this.session.status === "ready" || this.session.status === "no-lyrics");
   this.session.ensureLoad();
+  this.session.startRaf();
 };
 
 Karaoke.Integration.prototype.destroy = function () {
@@ -639,7 +652,7 @@ Karaoke.addSettings = function (Amazify, session) {
         const spotify = providerStatus && providerStatus.spotify ? providerStatus.spotify : providerStatus;
         const state = spotify && spotify.state || "checking";
         status.textContent = "Spotify beta: " + state + (spotify && spotify.detail ? " - " + spotify.detail : "");
-        actions.replaceChildren();
+        while (actions.firstChild) actions.removeChild(actions.firstChild);
         if (state === "connected") {
           button("Reconnect", function () { Amazify.lyricsProvider.beginAuth().then(refresh); });
           button("Disconnect", function () { Amazify.lyricsProvider.disconnect().then(refresh); });
@@ -686,6 +699,7 @@ Karaoke.bootstrap = function (Amazify) {
   if (!Karaoke.versionAtLeast(Amazify.version, "1.1.0")) throw new Error("Karaoke Lyrics requires Amazify 1.1.0 or newer");
   if (!Amazify.lyricsProvider) throw new Error("Karaoke Lyrics provider permission is unavailable");
   Karaoke.cleanLegacyStorage();
+  document.querySelectorAll('.amazify-karaoke-host[data-amazify-plugin-id="amazify.karaoke-lyrics"], .amazify-karaoke-host:not([data-amazify-plugin-id])').forEach(function (node) { node.remove(); });
   const session = new Karaoke.Session(Amazify.lyricsProvider);
   const integration = new Karaoke.Integration(session);
   integration.start();
@@ -700,9 +714,21 @@ Karaoke.bootstrap = function (Amazify) {
   const removeSettings = Karaoke.addSettings(Amazify, session);
   session.refreshProviderStatus().catch(function () {});
   return function () {
-    removeSettings();
-    releaseCapability();
-    integration.destroy();
+    try {
+      removeSettings();
+    } catch (error) {
+      console.warn("[Karaoke Lyrics] settings cleanup failed", error);
+    }
+    try {
+      releaseCapability();
+    } catch (error) {
+      console.warn("[Karaoke Lyrics] capability cleanup failed", error);
+    }
+    try {
+      integration.destroy();
+    } catch (error) {
+      console.warn("[Karaoke Lyrics] integration cleanup failed", error);
+    }
     session.destroy();
   };
 };

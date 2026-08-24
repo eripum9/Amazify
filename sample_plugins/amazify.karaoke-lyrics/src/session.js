@@ -147,6 +147,7 @@ Karaoke.Session.prototype.startRaf = function () {
     session.raf = 0;
     if (session.destroyed || !session.model || session.model.type === "static" || !session.visible()) return;
     session.renderer.update(Karaoke.readPlaybackTime(), false);
+    if (!Karaoke.isPlaying()) return;
     session.raf = requestAnimationFrame(frame);
   }
   this.raf = requestAnimationFrame(frame);

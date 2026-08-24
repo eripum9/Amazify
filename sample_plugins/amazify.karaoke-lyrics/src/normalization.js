@@ -4,8 +4,7 @@ Karaoke.number = function (value) {
 };
 
 Karaoke.timeMs = function (value) {
-  const parsed = Karaoke.number(value);
-  return parsed > 0 && parsed < 10000 ? parsed * 1000 : parsed;
+  return Karaoke.number(value);
 };
 
 Karaoke.normalizeWords = function (syllables) {
@@ -41,11 +40,12 @@ Karaoke.normalizeSpicy = function (packed, trackKey) {
   const content = Array.isArray(raw.Content) ? raw.Content : (Array.isArray(raw.content) ? raw.content : []);
   const lines = [];
   content.forEach(function (entry, lineIndex) {
-    if (!entry || typeof entry !== "object") return;
-    const lead = entry.Lead || entry.lead || entry;
+    if (!entry) return;
+    const item = typeof entry === "object" ? entry : { Text: String(entry) };
+    const lead = item.Lead || item.lead || item;
     const syllables = lead && (lead.Syllables || lead.syllables);
     const words = Karaoke.normalizeWords(syllables);
-    let text = String((lead && (lead.Text || lead.text)) || entry.Text || entry.text || "").trim();
+    let text = String((lead && (lead.Text || lead.text)) || item.Text || item.text || "").trim();
     if (!text && words.length) text = words.map(function (word) { return word.text; }).join(" ");
     if (!text) return;
     let startMs = Karaoke.timeMs(lead.StartTime != null ? lead.StartTime : lead.startTime);
@@ -60,8 +60,8 @@ Karaoke.normalizeSpicy = function (packed, trackKey) {
       startMs: startMs,
       endMs: Math.max(startMs, endMs),
       words: words,
-      translation: String(entry.Translation || entry.translation || ""),
-      background: Boolean(entry.Background || entry.background)
+      translation: String(item.Translation || item.translation || ""),
+      background: Boolean(item.Background || item.background)
     });
   });
   if (!lines.length) return null;

@@ -32,6 +32,16 @@ class LyricsCacheTests(unittest.TestCase):
             self.assertIsNone(reopened.get_mapping("amazon:key", 1))
             reopened.close()
 
+    def test_size_limit_evicts_least_recently_used_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            cache = LyricsCache(Path(temp) / "lyrics.sqlite3", max_bytes=360_000)
+            payload = {"lyrics": "x" * 220_000}
+            cache.store_lyrics("spicy-lyrics", "old", payload, "1.1")
+            cache.store_lyrics("spicy-lyrics", "new", payload, "1.1")
+            self.assertIsNone(cache.get_lyrics("spicy-lyrics", "old"))
+            self.assertEqual(cache.get_lyrics("spicy-lyrics", "new")["payload"], payload)
+            cache.close()
+
 
 if __name__ == "__main__":
     unittest.main()

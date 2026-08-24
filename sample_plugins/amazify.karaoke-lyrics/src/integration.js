@@ -36,6 +36,7 @@ Karaoke.Integration.prototype.sync = function () {
   wrapper.setAttribute("data-amazify-karaoke-status", this.session.status);
   wrapper.classList.toggle("amazify-karaoke-enhanced", this.session.status === "ready" || this.session.status === "no-lyrics");
   this.session.ensureLoad();
+  this.session.startRaf();
 };
 
 Karaoke.Integration.prototype.destroy = function () {

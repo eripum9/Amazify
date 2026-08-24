@@ -23,7 +23,7 @@ Karaoke.addSettings = function (Amazify, session) {
         const spotify = providerStatus && providerStatus.spotify ? providerStatus.spotify : providerStatus;
         const state = spotify && spotify.state || "checking";
         status.textContent = "Spotify beta: " + state + (spotify && spotify.detail ? " - " + spotify.detail : "");
-        actions.replaceChildren();
+        while (actions.firstChild) actions.removeChild(actions.firstChild);
         if (state === "connected") {
           button("Reconnect", function () { Amazify.lyricsProvider.beginAuth().then(refresh); });
           button("Disconnect", function () { Amazify.lyricsProvider.disconnect().then(refresh); });

@@ -22,17 +22,19 @@
   scrollbar-color: rgb(255 255 255 / 35%) transparent;
 }
 
-.amazify-karaoke-scroller::-webkit-scrollbar {
-  width: 8px;
+.amazify-karaoke-host .amazify-karaoke-scroller::-webkit-scrollbar {
+  width: 8px !important;
 }
 
-.amazify-karaoke-scroller::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 4px;
+.amazify-karaoke-host .amazify-karaoke-scroller::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  border-color: transparent !important;
+  border-radius: 4px !important;
 }
 
 .amazify-karaoke-host.is-manual-scroll .amazify-karaoke-scroller::-webkit-scrollbar-thumb {
-  background: rgb(255 255 255 / 35%);
+  background: rgba(255, 255, 255, 0.35) !important;
+  background-clip: padding-box !important;
 }
 
 .amazify-karaoke-line {

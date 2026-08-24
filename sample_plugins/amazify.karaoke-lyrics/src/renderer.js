@@ -1,6 +1,7 @@
 Karaoke.Renderer = function (onSeek) {
   this.node = document.createElement("div");
   this.node.className = "amazify-karaoke-host";
+  this.node.dataset.amazifyPluginId = "amazify.karaoke-lyrics";
   this.node.dataset.presentation = "normal";
   this.scroller = document.createElement("div");
   this.scroller.className = "amazify-karaoke-scroller";
@@ -11,7 +12,7 @@ Karaoke.Renderer = function (onSeek) {
   this.activeLine = -1;
   this.activeWord = -1;
   this.manualUntil = 0;
-  this.programmaticScroll = false;
+  this.programmaticUntil = 0;
   this.scrollTimer = 0;
   this.onSeek = onSeek;
   const renderer = this;
@@ -19,8 +20,12 @@ Karaoke.Renderer = function (onSeek) {
     renderer.scroller.addEventListener(name, function () { renderer.markManual(); }, { passive: true });
   });
   this.scroller.addEventListener("scroll", function () {
-    if (!renderer.programmaticScroll) renderer.markManual();
+    if (performance.now() >= renderer.programmaticUntil) renderer.markManual();
   }, { passive: true });
+  this.resizeObserver = typeof ResizeObserver === "function"
+    ? new ResizeObserver(function () { renderer.centerActive(false); })
+    : null;
+  if (this.resizeObserver) this.resizeObserver.observe(this.node);
 };
 
 Karaoke.Renderer.prototype.markManual = function () {
@@ -36,7 +41,7 @@ Karaoke.Renderer.prototype.setModel = function (model) {
   this.model = model;
   this.activeLine = -1;
   this.activeWord = -1;
-  this.scroller.replaceChildren();
+  while (this.scroller.firstChild) this.scroller.removeChild(this.scroller.firstChild);
   this.lineNodes = [];
   this.wordNodes = [];
   const renderer = this;
@@ -115,10 +120,9 @@ Karaoke.Renderer.prototype.update = function (timeMs, forceScroll) {
 Karaoke.Renderer.prototype.centerActive = function (force) {
   const target = this.lineNodes[this.activeLine];
   if (!target || (!force && performance.now() < this.manualUntil)) return;
-  this.programmaticScroll = true;
-  target.scrollIntoView({ behavior: "smooth", block: "center" });
-  const renderer = this;
-  requestAnimationFrame(function () { renderer.programmaticScroll = false; });
+  const reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  this.programmaticUntil = performance.now() + (reducedMotion ? 100 : 1200);
+  target.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
 };
 
 Karaoke.Renderer.prototype.claim = function (container, presentation) {
@@ -130,5 +134,6 @@ Karaoke.Renderer.prototype.claim = function (container, presentation) {
 
 Karaoke.Renderer.prototype.destroy = function () {
   clearTimeout(this.scrollTimer);
+  if (this.resizeObserver) this.resizeObserver.disconnect();
   this.node.remove();
 };

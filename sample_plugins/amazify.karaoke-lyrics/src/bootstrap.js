@@ -25,6 +25,7 @@ Karaoke.bootstrap = function (Amazify) {
   if (!Karaoke.versionAtLeast(Amazify.version, "1.1.0")) throw new Error("Karaoke Lyrics requires Amazify 1.1.0 or newer");
   if (!Amazify.lyricsProvider) throw new Error("Karaoke Lyrics provider permission is unavailable");
   Karaoke.cleanLegacyStorage();
+  document.querySelectorAll('.amazify-karaoke-host[data-amazify-plugin-id="amazify.karaoke-lyrics"], .amazify-karaoke-host:not([data-amazify-plugin-id])').forEach(function (node) { node.remove(); });
   const session = new Karaoke.Session(Amazify.lyricsProvider);
   const integration = new Karaoke.Integration(session);
   integration.start();
@@ -39,9 +40,21 @@ Karaoke.bootstrap = function (Amazify) {
   const removeSettings = Karaoke.addSettings(Amazify, session);
   session.refreshProviderStatus().catch(function () {});
   return function () {
-    removeSettings();
-    releaseCapability();
-    integration.destroy();
+    try {
+      removeSettings();
+    } catch (error) {
+      console.warn("[Karaoke Lyrics] settings cleanup failed", error);
+    }
+    try {
+      releaseCapability();
+    } catch (error) {
+      console.warn("[Karaoke Lyrics] capability cleanup failed", error);
+    }
+    try {
+      integration.destroy();
+    } catch (error) {
+      console.warn("[Karaoke Lyrics] integration cleanup failed", error);
+    }
     session.destroy();
   };
 };

@@ -105,6 +105,7 @@ def build_runtime_script(
   // Cleanup may run arbitrary plugin teardown. Keep bridge credentials out of
   // scope until all trusted references needed by the replacement are captured.
   NATIVE_DISPATCH_EVENT(window, new NATIVE_EVENT(CLEANUP_EVENT));
+  document.querySelectorAll('[data-amazify-plugin-id], [data-amazify-style-id]').forEach((node) => node.remove());
   if (NATIVE_COMMAND) {{
     try {{
       delete window.AmazifyNativeCommand;

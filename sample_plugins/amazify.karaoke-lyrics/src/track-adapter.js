@@ -33,8 +33,14 @@ Karaoke.readTrack = function () {
     hasLyrics: Boolean(raw.hasLyrics || lyricsData),
     amazonLyrics: lyricsData,
     currentTimeMs: Math.max(0, Number(progress.currentTime || 0)),
-    playing: String((vue && vue.playerModel && vue.playerModel.state) || "").toLowerCase() === "playing"
+    playing: Karaoke.isPlaying()
   };
+};
+
+Karaoke.isPlaying = function () {
+  const transport = document.querySelector("#transportContainer");
+  const vue = transport && transport.__vue__;
+  return String((vue && vue.playerModel && vue.playerModel.state) || "").toLowerCase() === "playing";
 };
 
 Karaoke.readPlaybackTime = function () {

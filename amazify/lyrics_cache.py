@@ -257,11 +257,14 @@ class LyricsCache:
         self._connection.execute("DELETE FROM track_mapping WHERE expires_at <= ?", (now,))
         self._connection.execute("DELETE FROM lyrics_payload WHERE expires_at <= ?", (now,))
         self._connection.commit()
-        try:
-            size = self.path.stat().st_size
-        except OSError:
-            return
-        while size > self._max_bytes:
+        page_size = int(self._connection.execute("PRAGMA page_size").fetchone()[0])
+        removed = False
+        while True:
+            page_count = int(self._connection.execute("PRAGMA page_count").fetchone()[0])
+            free_pages = int(self._connection.execute("PRAGMA freelist_count").fetchone()[0])
+            used_size = max(0, page_count - free_pages) * page_size
+            if used_size <= self._max_bytes:
+                break
             row = self._connection.execute(
                 """
                 SELECT provider, provider_track_id FROM lyrics_payload
@@ -284,8 +287,7 @@ class LyricsCache:
                     (mapping["amazon_key"],),
                 )
             self._connection.commit()
-            try:
-                size = self.path.stat().st_size
-            except OSError:
-                break
-
+            removed = True
+        if removed:
+            self._connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            self._connection.execute("VACUUM")
