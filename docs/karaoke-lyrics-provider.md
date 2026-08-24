@@ -1,5 +1,11 @@
 # Karaoke Lyrics Provider And Authentication
 
+> **Archived:** Karaoke Lyrics is preserved under
+> `sample_plugins/Scrapped/amazify.karaoke-lyrics` and is not part of the active
+> stock catalog. Spotify's Premium requirement for development-mode app owners
+> prevents this provider from being a dependable public stock feature. This
+> document records the preserved prototype architecture.
+
 Karaoke Lyrics always starts with Amazon Music's own `lyricsData` when it is
 available. Connecting Spotify is optional and only attempts to upgrade that
 fallback to word or syllable timing through the Spicy Lyrics compatibility API.
@@ -10,9 +16,9 @@ Amazify uses Authorization Code with PKCE. It opens Spotify in the system
 browser, listens temporarily on a random `127.0.0.1` port, validates a random
 OAuth state, and requests no scopes. There is no client secret in Amazify.
 
-The public client ID is read from `AMAZIFY_SPOTIFY_CLIENT_ID` in source builds.
-Packaged builds receive it from a generated PyInstaller runtime hook. Candidate
-builds require the repository Actions variable of the same name.
+Developers testing the archived prototype may provide the public client ID in
+`AMAZIFY_SPOTIFY_CLIENT_ID`. The generated PyInstaller runtime hook retains that
+development path, but normal candidate builds do not configure or require it.
 
 Access tokens remain in native process memory. Refresh tokens are encrypted with
 Windows DPAPI at `%APPDATA%\Amazify\spotify_refresh_token.bin`. Disconnecting

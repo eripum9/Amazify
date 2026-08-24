@@ -111,6 +111,87 @@ class FakeRedirectResponse:
 
 
 class PluginManagerTests(unittest.TestCase):
+    def test_manifest_normalizes_supported_plugin_settings(self) -> None:
+        manifest = demo_manifest()
+        manifest["settings"] = [
+            {
+                "id": "enabled",
+                "type": "boolean",
+                "label": "Enabled",
+                "default": True,
+            },
+            {
+                "id": "accentColor",
+                "type": "color",
+                "label": "Accent",
+                "default": "#AABBCC",
+            },
+            {
+                "id": "amount",
+                "type": "range",
+                "label": "Amount",
+                "default": 5,
+                "min": 0,
+                "max": 10,
+                "step": 1,
+            },
+            {
+                "id": "backgroundImage",
+                "type": "image",
+                "label": "Background",
+                "default": "",
+                "accept": ["image/png", "image/webp"],
+                "maxBytes": 500_000,
+            },
+            {
+                "id": "mode",
+                "type": "select",
+                "label": "Mode",
+                "default": "quiet",
+                "options": [
+                    {"value": "quiet", "label": "Quiet"},
+                    {"value": "loud", "label": "Loud"},
+                ],
+            },
+            {
+                "id": "title",
+                "type": "text",
+                "label": "Title",
+                "default": "Demo",
+                "maxLength": 40,
+            },
+        ]
+
+        settings = PluginManifest.from_dict(manifest).to_public_dict()["settings"]
+
+        self.assertEqual([setting["type"] for setting in settings], [
+            "boolean",
+            "color",
+            "range",
+            "image",
+            "select",
+            "text",
+        ])
+        self.assertEqual(settings[1]["default"], "#aabbcc")
+        self.assertEqual(settings[2]["max"], 10.0)
+        self.assertEqual(settings[3]["accept"], ["image/png", "image/webp"])
+        self.assertEqual(settings[5]["maxLength"], 40)
+
+    def test_manifest_rejects_invalid_plugin_settings(self) -> None:
+        invalid_settings = [
+            [{"id": "Accent", "type": "color", "label": "Accent", "default": "#ffffff"}],
+            [{"id": "accent", "type": "color", "label": "Accent", "default": "red"}],
+            [{"id": "amount", "type": "range", "label": "Amount", "default": 2, "min": 5, "max": 1, "step": 1}],
+            [{"id": "image", "type": "image", "label": "Image", "default": "data:image/svg+xml;base64,PHN2Zz4="}],
+            [{"id": "mode", "type": "select", "label": "Mode", "default": "missing", "options": [{"value": "known", "label": "Known"}]}],
+        ]
+        for settings in invalid_settings:
+            with self.subTest(settings=settings):
+                manifest = demo_manifest()
+                manifest["settings"] = settings
+                with self.assertRaises(PluginError):
+                    PluginManifest.from_dict(manifest)
+
     def test_lyrics_provider_permission_is_reserved(self) -> None:
         manifest = demo_manifest(plugin_id="community.lyrics")
         manifest["permissions"].append("lyrics-provider")
@@ -156,7 +237,6 @@ class PluginManagerTests(unittest.TestCase):
             self.assertEqual(
                 {plugin["id"] for plugin in catalog},
                 {
-                    "amazify.karaoke-lyrics",
                     "amazify.true-big-mode",
                     "amazify.theme.signal-studio",
                 },
@@ -181,7 +261,6 @@ class PluginManagerTests(unittest.TestCase):
             self.assertEqual(
                 set(copied),
                 {
-                    "amazify.karaoke-lyrics",
                     "amazify.true-big-mode",
                     "amazify.theme.signal-studio",
                 },
@@ -191,13 +270,22 @@ class PluginManagerTests(unittest.TestCase):
             self.assertTrue(all(not plugin["enabled"] for plugin in snapshot))
             self.assertTrue(all(plugin["source"]["entry"] for plugin in snapshot))
             self.assertTrue(all(plugin["source"]["styles"] for plugin in snapshot))
-            karaoke = next(
+            signal_studio = next(
                 plugin
                 for plugin in snapshot
-                if plugin["manifest"]["id"] == "amazify.karaoke-lyrics"
+                if plugin["manifest"]["id"] == "amazify.theme.signal-studio"
             )
-            self.assertIn("lyrics-provider", karaoke["manifest"]["permissions"])
-            self.assertIn("const Karaoke", karaoke["source"]["entry"])
+            self.assertEqual(
+                {setting["id"] for setting in signal_studio["manifest"]["settings"]},
+                {"primaryColor", "secondaryColor"},
+            )
+            self.assertIn("Amazify.settings.subscribe", signal_studio["source"]["entry"])
+            self.assertFalse(
+                any(
+                    plugin["manifest"]["id"] == "amazify.karaoke-lyrics"
+                    for plugin in snapshot
+                )
+            )
 
     def test_install_is_verified_atomic_and_disabled_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

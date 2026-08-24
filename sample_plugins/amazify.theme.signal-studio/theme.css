@@ -17,9 +17,13 @@ body.amazify-signal-studio {
   --signal-dim: #747c74;
   --signal-line: rgba(242, 245, 236, 0.13);
   --signal-line-strong: rgba(242, 245, 236, 0.24);
-  --signal-acid: #d9ff43;
-  --signal-coral: #ff745c;
-  --signal-cyan: #62d9cf;
+  --signal-primary: #d9ff43;
+  --signal-secondary: #ff745c;
+  --signal-primary-rgb: 217 255 67;
+  --signal-secondary-rgb: 255 116 92;
+  --signal-acid: var(--signal-primary);
+  --signal-coral: var(--signal-secondary);
+  --signal-cyan: var(--signal-secondary);
   --signal-rail-width: 104px;
   --signal-top-height: 72px;
   --signal-player-height: 100px;
@@ -297,7 +301,7 @@ body.amazify-signal-studio .searchSuggestions .listItem {
 body.amazify-signal-studio .searchSuggestions .listItem:hover,
 body.amazify-signal-studio .searchSuggestions .listItem:focus,
 body.amazify-signal-studio .searchSuggestions .listItem.selected {
-  background: rgba(217, 255, 67, 0.1) !important;
+  background: rgb(var(--signal-primary-rgb) / 0.1) !important;
   color: var(--signal-acid) !important;
 }
 
@@ -340,7 +344,7 @@ body.amazify-signal-studio .signal-studio-actions .amazify-header-button {
 
 body.amazify-signal-studio .signal-studio-actions .amazify-header-button:hover {
   border-color: var(--signal-acid) !important;
-  background: rgba(217, 255, 67, 0.1) !important;
+  background: rgb(var(--signal-primary-rgb) / 0.1) !important;
   color: var(--signal-acid) !important;
 }
 
@@ -455,8 +459,8 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) #appchrome .leftSe
 
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) #appchrome .leftSection > .navLinks .navLink.router-link-active,
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) #appchrome .leftSection > .navLinks .navLink[aria-current="page"] {
-  border-color: rgba(217, 255, 67, 0.34) !important;
-  background: rgba(217, 255, 67, 0.1) !important;
+  border-color: rgb(var(--signal-primary-rgb) / 0.34) !important;
+  background: rgb(var(--signal-primary-rgb) / 0.1) !important;
   color: var(--signal-acid) !important;
 }
 
@@ -588,7 +592,7 @@ body.amazify-signal-studio .signal-studio-now i {
   flex: 0 0 auto;
   border-radius: 50%;
   background: var(--signal-cyan);
-  box-shadow: 0 0 14px rgba(98, 217, 207, 0.55);
+  box-shadow: 0 0 14px rgb(var(--signal-secondary-rgb) / 0.55);
 }
 
 body.amazify-signal-studio .signal-studio-now span {
@@ -791,7 +795,7 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) .verticalTile {
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) .verticalTile:hover,
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) .verticalTile:focus-within {
   z-index: 3;
-  border-color: rgba(217, 255, 67, 0.48) !important;
+  border-color: rgb(var(--signal-primary-rgb) / 0.48) !important;
   background: rgba(32, 37, 31, 0.96) !important;
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.26) !important;
   transform: translateY(-5px);
@@ -979,7 +983,7 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) input:focus,
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) textarea:focus,
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) select:focus {
   border-color: var(--signal-cyan) !important;
-  outline: 2px solid rgba(98, 217, 207, 0.18) !important;
+  outline: 2px solid rgb(var(--signal-secondary-rgb) / 0.18) !important;
   outline-offset: 1px !important;
 }
 
@@ -1010,7 +1014,7 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) .dropdownMenu butt
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) .dropdownMenu a:hover,
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) [class*="contextMenu"] button:hover,
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) [class*="contextMenu"] a:hover {
-  background: rgba(217, 255, 67, 0.1) !important;
+  background: rgb(var(--signal-primary-rgb) / 0.1) !important;
   color: var(--signal-acid) !important;
 }
 
@@ -1048,7 +1052,7 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) .dialog.settings {
   border: 0 !important;
   border-radius: 0 !important;
   background:
-    linear-gradient(90deg, rgba(217, 255, 67, 0.025), transparent 28%),
+    linear-gradient(90deg, rgb(var(--signal-primary-rgb) / 0.025), transparent 28%),
     var(--signal-canvas) !important;
 }
 
@@ -1072,7 +1076,7 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) .dialog.settings .
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) .dialog.settings .sectionHeader {
   margin-top: 30px !important;
   padding-bottom: 9px !important;
-  border-bottom: 1px solid rgba(217, 255, 67, 0.32) !important;
+  border-bottom: 1px solid rgb(var(--signal-primary-rgb) / 0.32) !important;
   color: var(--signal-acid) !important;
   font-size: 11px !important;
   font-weight: 700 !important;
@@ -1140,7 +1144,7 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) .dialog.settings .
 }
 
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) .dialog.settings .closeButton:hover {
-  background: rgba(217, 255, 67, 0.1) !important;
+  background: rgb(var(--signal-primary-rgb) / 0.1) !important;
   color: var(--signal-acid) !important;
 }
 
@@ -1172,7 +1176,7 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) .lyricsBadge {
 }
 
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) .qualityBadge {
-  border-color: rgba(217, 255, 67, 0.5) !important;
+  border-color: rgb(var(--signal-primary-rgb) / 0.5) !important;
   color: var(--signal-acid) !important;
 }
 
@@ -1222,7 +1226,7 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) #transportContaine
   width: auto !important;
   height: auto !important;
   border-radius: 8px !important;
-  background: linear-gradient(90deg, rgba(217, 255, 67, 0.035), transparent 35%, rgba(98, 217, 207, 0.035)) !important;
+  background: linear-gradient(90deg, rgb(var(--signal-primary-rgb) / 0.035), transparent 35%, rgb(var(--signal-secondary-rgb) / 0.035)) !important;
   pointer-events: none !important;
 }
 
@@ -1402,7 +1406,7 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) #transportContaine
   border-color: var(--signal-acid) !important;
   background: var(--signal-acid) !important;
   color: #11150a !important;
-  box-shadow: 0 8px 28px rgba(217, 255, 67, 0.12) !important;
+  box-shadow: 0 8px 28px rgb(var(--signal-primary-rgb) / 0.12) !important;
 }
 
 body.amazify-signal-studio #transportContainer .playbackControls .v-popover .trigger .button.playPause {
@@ -1545,9 +1549,9 @@ body.amazify-signal-studio.signal-studio-queue-active .playQueue .textContainer 
 }
 
 body.amazify-signal-studio.signal-studio-queue-active .playQueue .header .btn {
-  border: 1px solid rgba(255, 116, 92, 0.46) !important;
+  border: 1px solid rgb(var(--signal-secondary-rgb) / 0.46) !important;
   border-radius: 5px !important;
-  background: rgba(255, 116, 92, 0.09) !important;
+  background: rgb(var(--signal-secondary-rgb) / 0.09) !important;
   color: var(--signal-coral) !important;
 }
 
@@ -1584,7 +1588,7 @@ body.amazify-signal-studio.signal-studio-queue-active .playQueue table.page tr {
 }
 
 body.amazify-signal-studio.signal-studio-queue-active .playQueue table.page tr:hover {
-  background: rgba(217, 255, 67, 0.055) !important;
+  background: rgb(var(--signal-primary-rgb) / 0.055) !important;
 }
 
 body.amazify-signal-studio.signal-studio-queue-active .playQueue table.page td,
@@ -2041,7 +2045,7 @@ body.amazify-signal-studio.signal-studio-big-mode-active:not(.amazify-true-big-m
 
 body.amazify-signal-studio.signal-studio-big-mode-active:not(.amazify-true-big-mode-active) .nowPlayingView.x4 .lyricsLine.current .lyricsText {
   color: var(--signal-acid) !important;
-  text-shadow: 0 0 28px rgba(217, 255, 67, 0.15) !important;
+  text-shadow: 0 0 28px rgb(var(--signal-primary-rgb) / 0.15) !important;
 }
 
 body.amazify-signal-studio.signal-studio-big-mode-active:not(.amazify-true-big-mode-active) .nowPlayingView.x4 .credits {
@@ -2106,7 +2110,7 @@ body.amazify-signal-studio.amazify-true-big-mode-active #transportContainer.chil
 body.amazify-signal-studio.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-lyric-active,
 body.amazify-signal-studio.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-word-active {
   color: var(--signal-ink) !important;
-  text-shadow: 0 0 30px rgba(217, 255, 67, 0.12) !important;
+  text-shadow: 0 0 30px rgb(var(--signal-primary-rgb) / 0.12) !important;
 }
 
 /* Amazify surfaces are part of the theme too. */
@@ -2125,7 +2129,7 @@ body.amazify-signal-studio [data-amazify-root="true"] .amazify-header-button:hov
 body.amazify-signal-studio .amazify-plugin-action:hover,
 body.amazify-signal-studio .amrpc-amazify-button:hover {
   border-color: var(--signal-acid) !important;
-  background: rgba(217, 255, 67, 0.1) !important;
+  background: rgb(var(--signal-primary-rgb) / 0.1) !important;
   color: var(--signal-acid) !important;
 }
 
@@ -2297,7 +2301,7 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .pil
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .pillNavigation .btn:hover,
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .pillNavigation .btn:focus {
   border-color: var(--signal-cyan) !important;
-  background: rgba(98, 217, 207, 0.08) !important;
+  background: rgb(var(--signal-secondary-rgb) / 0.08) !important;
   color: var(--signal-cyan) !important;
 }
 

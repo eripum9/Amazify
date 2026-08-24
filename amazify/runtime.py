@@ -89,6 +89,10 @@ def build_runtime_script(
   const NATIVE_JSON_STRINGIFY = JSON.stringify.bind(JSON);
   const NATIVE_HAS_OWN = Function.prototype.call.bind(Object.prototype.hasOwnProperty);
   const NATIVE_PROMISE = window.Promise;
+  const NATIVE_FILE_READER = window.FileReader;
+  const NATIVE_FILE_READER_READ_AS_DATA_URL = NATIVE_FILE_READER
+    ? Function.prototype.call.bind(NATIVE_FILE_READER.prototype.readAsDataURL)
+    : null;
   const NATIVE_MAP = window.Map;
   const NATIVE_MAP_GET = Function.prototype.call.bind(Map.prototype.get);
   const NATIVE_MAP_SET = Function.prototype.call.bind(Map.prototype.set);
@@ -128,6 +132,7 @@ def build_runtime_script(
   const PANEL_SELECTOR = '[data-amazify-panel="true"]';
   const MENU_SELECTOR = '[data-amazify-menu="true"]';
   const SETTINGS_STORAGE_KEY = "amazify.runtime.settings.v1";
+  const PLUGIN_SETTINGS_STORAGE_KEY = "amazify.plugin.settings.v1";
   let runtimeActive = true;
 
   function readRuntimePreferences() {{
@@ -147,8 +152,18 @@ def build_runtime_script(
     }}
   }}
 
+  function readStoredPluginSettings() {{
+    try {{
+      const saved = NATIVE_JSON_PARSE(window.localStorage.getItem(PLUGIN_SETTINGS_STORAGE_KEY) || "{{}}");
+      return saved && typeof saved === "object" && !NATIVE_ARRAY_IS_ARRAY(saved) ? saved : {{}};
+    }} catch (_error) {{
+      return {{}};
+    }}
+  }}
+
   const state = {{
     activePanel: null,
+    activePluginSettingsId: "",
     plugins: new NATIVE_MAP(),
     catalogPlugins: new NATIVE_MAP(),
     root: null,
@@ -159,6 +174,7 @@ def build_runtime_script(
     capabilitySubscribers: new NATIVE_MAP(),
     settingsSections: new NATIVE_MAP(),
     settingsRenderCleanups: new NATIVE_MAP(),
+    pluginSettingSubscribers: new NATIVE_MAP(),
     nativeRequests: new NATIVE_MAP(),
     nativeSequence: 0,
     lastError: "",
@@ -168,7 +184,8 @@ def build_runtime_script(
     appUpdate: INITIAL_APP_UPDATE,
     appUpdatePollTimer: null,
     bridgeStatus: "Connected",
-    preferences: readRuntimePreferences()
+    preferences: readRuntimePreferences(),
+    pluginSettings: readStoredPluginSettings()
   }};
 
   function mapValuesSnapshot(map) {{
@@ -193,6 +210,174 @@ def build_runtime_script(
       if (predicate(value)) count += 1;
     }});
     return count;
+  }}
+
+  function manifestForPlugin(pluginId) {{
+    const installed = NATIVE_MAP_GET(state.plugins, pluginId);
+    if (installed && installed.manifest) return installed.manifest;
+    const catalog = NATIVE_MAP_GET(state.catalogPlugins, pluginId);
+    return catalog && catalog.manifest ? catalog.manifest : null;
+  }}
+
+  function manifestSettings(manifest) {{
+    return manifest && NATIVE_ARRAY_IS_ARRAY(manifest.settings) ? manifest.settings : [];
+  }}
+
+  function pluginSettingDefinition(manifest, settingId) {{
+    const settings = manifestSettings(manifest);
+    for (let index = 0; index < settings.length; index += 1) {{
+      if (NATIVE_STRING(settings[index].id || "") === settingId) return settings[index];
+    }}
+    return null;
+  }}
+
+  function normalizePluginSettingValue(definition, value) {{
+    if (!definition || typeof definition !== "object") return {{ valid: false }};
+    const type = NATIVE_STRING(definition.type || "");
+    if (type === "boolean") {{
+      return typeof value === "boolean" ? {{ valid: true, value }} : {{ valid: false }};
+    }}
+    if (type === "color") {{
+      const color = NATIVE_STRING(value || "").trim().toLowerCase();
+      return /^#[0-9a-f]{{6}}$/.test(color)
+        ? {{ valid: true, value: color }}
+        : {{ valid: false }};
+    }}
+    if (type === "image") {{
+      if (value === "") return {{ valid: true, value: "" }};
+      const image = NATIVE_STRING(value || "");
+      const match = /^data:([^;,]+);base64,([A-Za-z0-9+/]*={{0,2}})$/.exec(image);
+      const accepted = NATIVE_ARRAY_IS_ARRAY(definition.accept) ? definition.accept : [];
+      const maxBytes = Math.max(1024, Math.min(2 * 1024 * 1024, Number(definition.maxBytes) || 1024 * 1024));
+      if (!match || match[2].length % 4 !== 0 || !accepted.includes(match[1])) return {{ valid: false }};
+      const padding = match[2].endsWith("==") ? 2 : match[2].endsWith("=") ? 1 : 0;
+      const decodedBytes = match[2].length * 3 / 4 - padding;
+      return decodedBytes <= maxBytes ? {{ valid: true, value: image }} : {{ valid: false }};
+    }}
+    if (type === "range") {{
+      const minimum = Number(definition.min);
+      const maximum = Number(definition.max);
+      const step = Number(definition.step);
+      const number = Number(value);
+      if (![minimum, maximum, step, number].every(Number.isFinite) || maximum <= minimum || step <= 0) {{
+        return {{ valid: false }};
+      }}
+      const clamped = Math.min(maximum, Math.max(minimum, number));
+      const aligned = minimum + Math.round((clamped - minimum) / step) * step;
+      return {{ valid: true, value: Number(Math.min(maximum, Math.max(minimum, aligned)).toFixed(8)) }};
+    }}
+    if (type === "select") {{
+      const selected = NATIVE_STRING(value);
+      const options = NATIVE_ARRAY_IS_ARRAY(definition.options) ? definition.options : [];
+      const valid = options.some((option) => option && NATIVE_STRING(option.value) === selected);
+      return valid ? {{ valid: true, value: selected }} : {{ valid: false }};
+    }}
+    if (type === "text") {{
+      const text = NATIVE_STRING(value == null ? "" : value);
+      const maxLength = Math.max(1, Math.min(1024, Number(definition.maxLength) || 256));
+      return text.length <= maxLength
+        ? {{ valid: true, value: text }}
+        : {{ valid: false }};
+    }}
+    return {{ valid: false }};
+  }}
+
+  function storedSettingsForPlugin(pluginId, create = false) {{
+    let values = NATIVE_HAS_OWN(state.pluginSettings, pluginId) ? state.pluginSettings[pluginId] : null;
+    if (!values || typeof values !== "object" || NATIVE_ARRAY_IS_ARRAY(values)) {{
+      if (!create) return null;
+      values = {{}};
+      state.pluginSettings[pluginId] = values;
+    }}
+    return values;
+  }}
+
+  function pluginSettingValue(pluginId, manifest, settingId) {{
+    const definition = pluginSettingDefinition(manifest, settingId);
+    if (!definition) throw new Error(`Unknown setting: ${{settingId}}`);
+    const values = storedSettingsForPlugin(pluginId, false);
+    if (values && NATIVE_HAS_OWN(values, settingId)) {{
+      const stored = normalizePluginSettingValue(definition, values[settingId]);
+      if (stored.valid) return stored.value;
+    }}
+    return normalizePluginSettingValue(definition, definition.default).value;
+  }}
+
+  function pluginSettingsSnapshot(pluginId, manifest) {{
+    const snapshot = {{}};
+    const definitions = manifestSettings(manifest);
+    for (let index = 0; index < definitions.length; index += 1) {{
+      const settingId = NATIVE_STRING(definitions[index].id || "");
+      if (settingId) snapshot[settingId] = pluginSettingValue(pluginId, manifest, settingId);
+    }}
+    return freezeDeep(snapshot);
+  }}
+
+  function persistPluginSettings() {{
+    window.localStorage.setItem(
+      PLUGIN_SETTINGS_STORAGE_KEY,
+      NATIVE_JSON_STRINGIFY(state.pluginSettings)
+    );
+  }}
+
+  function notifyPluginSettingSubscribers(pluginId, manifest) {{
+    const subscribers = NATIVE_MAP_GET(state.pluginSettingSubscribers, pluginId) || [];
+    const snapshot = pluginSettingsSnapshot(pluginId, manifest);
+    for (let index = 0; index < subscribers.length; index += 1) {{
+      const subscriber = subscribers[index];
+      if (!subscriber.active) continue;
+      try {{ subscriber.listener(snapshot); }} catch (error) {{
+        console.warn("[Amazify] Plugin settings subscriber failed", pluginId, error);
+      }}
+    }}
+  }}
+
+  function setPluginSetting(pluginId, settingId, value) {{
+    const manifest = manifestForPlugin(pluginId);
+    const definition = pluginSettingDefinition(manifest, settingId);
+    if (!definition) throw new Error(`Unknown setting: ${{settingId}}`);
+    const normalized = normalizePluginSettingValue(definition, value);
+    if (!normalized.valid) throw new TypeError(`Invalid value for setting: ${{settingId}}`);
+    const values = storedSettingsForPlugin(pluginId, true);
+    const hadPrevious = NATIVE_HAS_OWN(values, settingId);
+    const previous = values[settingId];
+    values[settingId] = normalized.value;
+    try {{
+      persistPluginSettings();
+    }} catch (_error) {{
+      if (hadPrevious) values[settingId] = previous;
+      else delete values[settingId];
+      throw new Error("Plugin settings storage is full or unavailable");
+    }}
+    notifyPluginSettingSubscribers(pluginId, manifest);
+    return normalized.value;
+  }}
+
+  function resetPluginSettings(pluginId) {{
+    const manifest = manifestForPlugin(pluginId);
+    if (!manifest) return;
+    if (NATIVE_HAS_OWN(state.pluginSettings, pluginId)) {{
+      const previous = state.pluginSettings[pluginId];
+      delete state.pluginSettings[pluginId];
+      try {{
+        persistPluginSettings();
+      }} catch (_error) {{
+        state.pluginSettings[pluginId] = previous;
+        throw new Error("Plugin settings storage is unavailable");
+      }}
+    }}
+    notifyPluginSettingSubscribers(pluginId, manifest);
+  }}
+
+  function subscribePluginSettings(pluginId, listener) {{
+    if (typeof listener !== "function") throw new TypeError("Plugin settings subscriber must be a function");
+    const manifest = manifestForPlugin(pluginId);
+    const subscribers = NATIVE_MAP_GET(state.pluginSettingSubscribers, pluginId) || [];
+    const record = {{ active: true, listener }};
+    subscribers[subscribers.length] = record;
+    NATIVE_MAP_SET(state.pluginSettingSubscribers, pluginId, subscribers);
+    listener(pluginSettingsSnapshot(pluginId, manifest));
+    return () => {{ record.active = false; }};
   }}
 
   if (/^__amazifyNativeResult_[0-9a-f]{{36}}$/.test(NATIVE_RESPONSE_CALLBACK)) {{
@@ -452,6 +637,11 @@ def build_runtime_script(
       text-transform: uppercase;
       letter-spacing: 0;
     }}
+    .amazify-marketplace-section + .amazify-marketplace-section {{
+      margin-top: 20px;
+      padding-top: 4px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }}
     .amazify-plugin-row,
     .amazify-setting-row {{
       border: 1px solid rgba(255,255,255,0.09);
@@ -483,6 +673,174 @@ def build_runtime_script(
       align-items: center;
       gap: 8px;
       flex: 0 0 auto;
+    }}
+    .amazify-plugin-settings-view {{
+      min-width: 0;
+    }}
+    .amazify-back-button {{
+      min-height: 32px;
+      border: 0;
+      background: transparent;
+      color: #aeb6bd;
+      padding: 0;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }}
+    .amazify-back-button:hover {{
+      color: #fff;
+    }}
+    .amazify-plugin-settings-heading {{
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 12px;
+    }}
+    .amazify-plugin-settings-heading .amazify-plugin-name {{
+      font-size: 18px;
+      line-height: 23px;
+    }}
+    .amazify-plugin-settings-fields {{
+      border-top: 1px solid rgba(255,255,255,0.09);
+    }}
+    .amazify-plugin-setting-field {{
+      min-height: 66px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.09);
+      padding: 10px 2px;
+    }}
+    .amazify-plugin-setting-field > div:first-child {{
+      min-width: 0;
+    }}
+    .amazify-plugin-setting-field strong {{
+      display: block;
+      color: #f2f3f3;
+      font-size: 13px;
+      line-height: 18px;
+    }}
+    .amazify-plugin-setting-field span {{
+      display: block;
+      margin-top: 2px;
+      color: #929ca5;
+      font-size: 12px;
+      line-height: 16px;
+    }}
+    .amazify-plugin-setting-control {{
+      min-width: 126px;
+      display: flex;
+      justify-content: flex-end;
+      flex: 0 0 auto;
+    }}
+    .amazify-color-setting,
+    .amazify-range-setting {{
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 9px;
+    }}
+    .amazify-color-setting input[type="color"] {{
+      width: 38px;
+      height: 32px;
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 6px;
+      background: #23282d;
+      padding: 3px;
+      cursor: pointer;
+    }}
+    .amazify-color-setting code,
+    .amazify-range-setting output {{
+      min-width: 58px;
+      color: #cbd1d6;
+      font: 12px/16px "Cascadia Mono", Consolas, monospace;
+      text-align: right;
+    }}
+    .amazify-image-setting {{
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 7px;
+    }}
+    .amazify-image-setting-preview,
+    .amazify-image-setting-empty {{
+      width: 48px;
+      height: 48px;
+      flex: 0 0 48px;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 6px;
+      background: #23282d;
+    }}
+    .amazify-image-setting-preview {{
+      display: block;
+      object-fit: cover;
+    }}
+    .amazify-image-setting-empty {{
+      display: grid;
+      place-items: center;
+      color: #929ca5;
+      font-size: 10px;
+      line-height: 12px;
+      text-align: center;
+    }}
+    .amazify-image-setting-choose {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }}
+    .amazify-image-setting-choose:focus-within {{
+      outline: 2px solid #00a8e1;
+      outline-offset: 2px;
+    }}
+    .amazify-image-setting-choose input {{
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }}
+    .amazify-range-setting input[type="range"] {{
+      width: 120px;
+      accent-color: #00a8e1;
+    }}
+    .amazify-select-setting,
+    .amazify-text-setting {{
+      width: 170px;
+      max-width: 42vw;
+      min-height: 34px;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 6px;
+      background: #23282d;
+      color: #f2f3f3;
+      padding: 0 9px;
+      font: inherit;
+      font-size: 12px;
+    }}
+    .amazify-plugin-settings-section {{
+      margin-top: 14px;
+    }}
+    .amazify-plugin-settings-host {{
+      min-width: 0;
+    }}
+    .amazify-plugin-settings-actions {{
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 20px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(255,255,255,0.09);
+    }}
+    .amazify-plugin-settings-note {{
+      color: #929ca5;
+      font-size: 12px;
+      line-height: 17px;
+      text-align: right;
     }}
     .amazify-plugin-desc {{
       color: #c4cad0;
@@ -654,6 +1012,24 @@ def build_runtime_script(
       }}
       .amazify-panel-body {{
         padding: 12px;
+      }}
+      .amazify-plugin-setting-field {{
+        align-items: stretch;
+        flex-direction: column;
+        gap: 8px;
+      }}
+      .amazify-plugin-setting-control {{
+        width: 100%;
+        justify-content: flex-start;
+      }}
+      .amazify-select-setting,
+      .amazify-text-setting {{
+        width: 100%;
+        max-width: none;
+      }}
+      .amazify-plugin-settings-actions {{
+        align-items: stretch;
+        flex-direction: column;
       }}
     }}
   `;
@@ -842,6 +1218,7 @@ def build_runtime_script(
 
   function openPanel(tab = "marketplace") {{
     state.activePanel = tab;
+    state.activePluginSettingsId = "";
     const existingMenu = document.querySelector(MENU_SELECTOR);
     if (existingMenu) existingMenu.remove();
     renderPanel();
@@ -854,6 +1231,7 @@ def build_runtime_script(
 
   function closePanel() {{
     state.activePanel = null;
+    state.activePluginSettingsId = "";
     cleanupRenderedSettingsSections();
     const existingPanel = document.querySelector(PANEL_SELECTOR);
     if (existingPanel) existingPanel.remove();
@@ -877,13 +1255,18 @@ def build_runtime_script(
       </div>
       <div class="amazify-panel-body">
         ${{state.lastError ? `<div class="amazify-error">${{esc(state.lastError)}}</div>` : ""}}
-        ${{active === "settings" ? renderSettings() : renderMarketplace()}}
+        ${{active === "settings"
+          ? renderSettings()
+          : state.activePluginSettingsId
+            ? renderPluginSettingsView(state.activePluginSettingsId)
+            : renderMarketplace()}}
       </div>
     `;
     panel.querySelector(".amazify-close").addEventListener("click", closePanel);
     panel.querySelectorAll("[data-amazify-tab]").forEach((tab) => {{
       tab.addEventListener("click", () => {{
         state.activePanel = tab.dataset.amazifyTab;
+        state.activePluginSettingsId = "";
         renderPanel();
         if (state.activePanel === "marketplace" && state.preferences.autoCheckUpdates) {{
           refreshCatalogFromBridge();
@@ -923,9 +1306,35 @@ def build_runtime_script(
         await installPlugin(button.dataset.amazifyInstallPlugin);
       }});
     }});
-    if (active === "settings") {{
-      renderPluginSettingsSections(panel);
+    panel.querySelectorAll("[data-amazify-open-plugin-settings]").forEach((button) => {{
+      button.addEventListener("click", () => openPluginSettings(button.dataset.amazifyOpenPluginSettings));
+    }});
+    const pluginSettingsBack = panel.querySelector("[data-amazify-plugin-settings-back]");
+    if (pluginSettingsBack) pluginSettingsBack.addEventListener("click", () => {{
+      state.activePluginSettingsId = "";
+      renderPanel();
+    }});
+    const resetPluginSettingsButton = panel.querySelector("[data-amazify-reset-plugin-settings]");
+    if (resetPluginSettingsButton) addTrustedLifecycleClick(resetPluginSettingsButton, () => {{
+      try {{
+        resetPluginSettings(resetPluginSettingsButton.dataset.amazifyResetPluginSettings);
+        state.lastError = "";
+      }} catch (error) {{
+        state.lastError = error.message || NATIVE_STRING(error);
+      }}
+      renderPanel();
+    }});
+    bindPluginSettingControls(panel);
+    if (active === "marketplace" && state.activePluginSettingsId) {{
+      renderPluginSettingsSections(panel, state.activePluginSettingsId);
     }}
+  }}
+
+  function openPluginSettings(pluginId) {{
+    if (!pluginId || !manifestForPlugin(pluginId)) return;
+    state.activePanel = "marketplace";
+    state.activePluginSettingsId = pluginId;
+    renderPanel();
   }}
 
   function cleanupRenderedSettingsSections(pluginId = "") {{
@@ -943,12 +1352,13 @@ def build_runtime_script(
     }}
   }}
 
-  function renderPluginSettingsSections(panel) {{
-    const body = panel ? panel.querySelector(".amazify-panel-body") : null;
-    if (!body) return;
+  function renderPluginSettingsSections(panel, pluginId) {{
+    const body = panel ? panel.querySelector("[data-amazify-custom-settings-host]") : null;
+    if (!body || !pluginId) return;
     const sections = mapValuesSnapshot(state.settingsSections);
     for (let index = 0; index < sections.length; index += 1) {{
       const section = sections[index];
+      if (section.pluginId !== pluginId) continue;
       const wrapper = document.createElement("section");
       wrapper.className = "amazify-plugin-settings-section";
       wrapper.dataset.amazifyPluginId = section.pluginId;
@@ -974,11 +1384,177 @@ def build_runtime_script(
     if (!plugins.length) {{
       return '<div class="amazify-empty">No marketplace plugins were found. Check the catalog URL in settings or try refresh.</div>';
     }}
+    const themes = [];
+    const extensions = [];
+    for (let index = 0; index < plugins.length; index += 1) {{
+      const manifest = (plugins[index].installed || plugins[index].catalog).manifest;
+      (manifest.type === "theme" ? themes : extensions).push(plugins[index]);
+    }}
     return `
       ${{state.catalogError ? `<div class="amazify-error">${{esc(state.catalogError)}}</div>` : ""}}
-      <div class="amazify-section-title">Marketplace plugins</div>
-      ${{plugins.map(renderPluginRow).join("")}}
+      ${{themes.length ? `<section class="amazify-marketplace-section"><div class="amazify-section-title">Themes</div>${{themes.map(renderPluginRow).join("")}}</section>` : ""}}
+      ${{extensions.length ? `<section class="amazify-marketplace-section"><div class="amazify-section-title">Plugins</div>${{extensions.map(renderPluginRow).join("")}}</section>` : ""}}
     `;
+  }}
+
+  function marketplacePluginForId(pluginId) {{
+    const plugins = marketplacePlugins();
+    for (let index = 0; index < plugins.length; index += 1) {{
+      const manifest = (plugins[index].installed || plugins[index].catalog).manifest;
+      if (manifest.id === pluginId) return plugins[index];
+    }}
+    return null;
+  }}
+
+  function hasCustomPluginSettings(pluginId) {{
+    const sections = mapValuesSnapshot(state.settingsSections);
+    for (let index = 0; index < sections.length; index += 1) {{
+      if (sections[index].pluginId === pluginId) return true;
+    }}
+    return false;
+  }}
+
+  function renderPluginSettingControl(pluginId, manifest, definition) {{
+    const settingId = NATIVE_STRING(definition.id || "");
+    const type = NATIVE_STRING(definition.type || "");
+    const value = pluginSettingValue(pluginId, manifest, settingId);
+    const label = esc(definition.label || settingId);
+    const description = definition.description
+      ? `<span>${{esc(definition.description)}}</span>`
+      : "";
+    let control = "";
+    if (type === "boolean") {{
+      control = `<button class="amazify-toggle" type="button" aria-label="${{label}}" aria-pressed="${{value ? "true" : "false"}}" data-amazify-plugin-setting="${{esc(pluginId)}}" data-amazify-plugin-setting-id="${{esc(settingId)}}" data-amazify-plugin-setting-type="boolean"></button>`;
+    }} else if (type === "color") {{
+      control = `<label class="amazify-color-setting"><input type="color" value="${{esc(value)}}" aria-label="${{label}}" data-amazify-plugin-setting="${{esc(pluginId)}}" data-amazify-plugin-setting-id="${{esc(settingId)}}" data-amazify-plugin-setting-type="color"><code data-amazify-setting-output>${{esc(value)}}</code></label>`;
+    }} else if (type === "image") {{
+      const accepted = NATIVE_ARRAY_IS_ARRAY(definition.accept) ? definition.accept.join(",") : "image/png,image/jpeg,image/webp";
+      const preview = value
+        ? `<img class="amazify-image-setting-preview" src="${{esc(value)}}" alt="" aria-hidden="true">`
+        : '<span class="amazify-image-setting-empty">No image</span>';
+      control = `<div class="amazify-image-setting">${{preview}}<label class="amazify-quiet amazify-image-setting-choose">Choose image<input type="file" accept="${{esc(accepted)}}" data-amazify-plugin-setting="${{esc(pluginId)}}" data-amazify-plugin-setting-id="${{esc(settingId)}}" data-amazify-plugin-setting-type="image"></label>${{value ? `<button class="amazify-quiet" type="button" data-amazify-clear-image-setting="${{esc(pluginId)}}" data-amazify-plugin-setting-id="${{esc(settingId)}}">Remove</button>` : ""}}</div>`;
+    }} else if (type === "range") {{
+      control = `<label class="amazify-range-setting"><input type="range" min="${{esc(definition.min)}}" max="${{esc(definition.max)}}" step="${{esc(definition.step)}}" value="${{esc(value)}}" aria-label="${{label}}" data-amazify-plugin-setting="${{esc(pluginId)}}" data-amazify-plugin-setting-id="${{esc(settingId)}}" data-amazify-plugin-setting-type="range"><output data-amazify-setting-output>${{esc(value)}}</output></label>`;
+    }} else if (type === "select") {{
+      const options = NATIVE_ARRAY_IS_ARRAY(definition.options) ? definition.options : [];
+      control = `<select class="amazify-select-setting" aria-label="${{label}}" data-amazify-plugin-setting="${{esc(pluginId)}}" data-amazify-plugin-setting-id="${{esc(settingId)}}" data-amazify-plugin-setting-type="select">${{options.map((option) => `<option value="${{esc(option.value)}}" ${{NATIVE_STRING(option.value) === NATIVE_STRING(value) ? "selected" : ""}}>${{esc(option.label)}}</option>`).join("")}}</select>`;
+    }} else if (type === "text") {{
+      control = `<input class="amazify-text-setting" type="text" value="${{esc(value)}}" maxlength="${{esc(definition.maxLength || 256)}}" placeholder="${{esc(definition.placeholder || "")}}" aria-label="${{label}}" data-amazify-plugin-setting="${{esc(pluginId)}}" data-amazify-plugin-setting-id="${{esc(settingId)}}" data-amazify-plugin-setting-type="text">`;
+    }}
+    return `<div class="amazify-plugin-setting-field"><div><strong>${{label}}</strong>${{description}}</div><div class="amazify-plugin-setting-control">${{control}}</div></div>`;
+  }}
+
+  function renderPluginSettingsView(pluginId) {{
+    const plugin = marketplacePluginForId(pluginId);
+    if (!plugin) return '<div class="amazify-empty">This plugin is no longer available.</div>';
+    const installed = plugin.installed;
+    const catalog = plugin.catalog;
+    const manifest = (installed || catalog).manifest;
+    const definitions = manifestSettings(manifest);
+    const customSettings = hasCustomPluginSettings(pluginId);
+    const canInstall = Boolean(catalog && catalog.compatible !== false);
+    const installLabel = catalog && installed && catalog.updateAvailable
+      ? `Update to v${{esc(catalog.latestVersion || catalog.manifest.version)}}`
+      : "Reinstall plugin";
+    const installAction = catalog
+      ? `<button class="amazify-primary" type="button" data-amazify-install-plugin="${{esc(pluginId)}}" ${{canInstall ? "" : "disabled"}}>${{installLabel}}</button>`
+      : '<span class="amazify-plugin-settings-note">Local plugins cannot be reinstalled from the catalog.</span>';
+    const settingsMarkup = definitions.length
+      ? definitions.map((definition) => renderPluginSettingControl(pluginId, manifest, definition)).join("")
+      : customSettings
+        ? ""
+        : '<div class="amazify-empty">This plugin has no configurable features.</div>';
+    return `
+      <div class="amazify-plugin-settings-view">
+        <button class="amazify-back-button" type="button" data-amazify-plugin-settings-back>&larr; Marketplace</button>
+        <div class="amazify-plugin-settings-heading">
+          <div><div class="amazify-plugin-name">${{esc(manifest.name)}}</div><div class="amazify-plugin-meta">${{esc(manifest.type)}} by ${{esc(manifest.author)}} - v${{esc(installed ? installed.manifest.version : manifest.version)}}</div></div>
+        </div>
+        <div class="amazify-plugin-desc">${{esc(manifest.description)}}</div>
+        <div class="amazify-section-title">Plugin settings</div>
+        <div class="amazify-plugin-settings-fields">${{settingsMarkup}}</div>
+        <div data-amazify-custom-settings-host></div>
+        <div class="amazify-plugin-settings-actions">
+          ${{definitions.length ? `<button class="amazify-quiet" type="button" data-amazify-reset-plugin-settings="${{esc(pluginId)}}">Reset defaults</button>` : ""}}
+          ${{installAction}}
+        </div>
+      </div>
+    `;
+  }}
+
+  function bindPluginSettingControls(panel) {{
+    panel.querySelectorAll("[data-amazify-plugin-setting]").forEach((control) => {{
+      const pluginId = control.dataset.amazifyPluginSetting;
+      const settingId = control.dataset.amazifyPluginSettingId;
+      const type = control.dataset.amazifyPluginSettingType;
+      if (type === "image") {{
+        control.addEventListener("change", (event) => {{
+          if (!event || event.isTrusted !== true || !control.files || !control.files[0]) return;
+          const manifest = manifestForPlugin(pluginId);
+          const definition = pluginSettingDefinition(manifest, settingId);
+          const file = control.files[0];
+          const accepted = definition && NATIVE_ARRAY_IS_ARRAY(definition.accept) ? definition.accept : [];
+          const maxBytes = definition ? Number(definition.maxBytes) : 0;
+          if (!accepted.includes(file.type) || !Number.isFinite(maxBytes) || file.size > maxBytes) {{
+            state.lastError = "The selected image type or size is not allowed by this plugin.";
+            renderPanel();
+            return;
+          }}
+          if (!NATIVE_FILE_READER || !NATIVE_FILE_READER_READ_AS_DATA_URL) {{
+            state.lastError = "Image selection is unavailable in this Amazon Music build.";
+            renderPanel();
+            return;
+          }}
+          const reader = new NATIVE_FILE_READER();
+          NATIVE_ADD_EVENT_LISTENER(reader, "load", () => {{
+            try {{
+              setPluginSetting(pluginId, settingId, NATIVE_STRING(reader.result || ""));
+              state.lastError = "";
+            }} catch (error) {{
+              state.lastError = error.message || NATIVE_STRING(error);
+            }}
+            renderPanel();
+          }});
+          NATIVE_ADD_EVENT_LISTENER(reader, "error", () => {{
+            state.lastError = "The selected image could not be read.";
+            renderPanel();
+          }});
+          NATIVE_FILE_READER_READ_AS_DATA_URL(reader, file);
+        }});
+        return;
+      }}
+      const update = (event) => {{
+        if (!event || event.isTrusted !== true) return;
+        try {{
+          const rawValue = type === "boolean"
+            ? control.getAttribute("aria-pressed") !== "true"
+            : control.value;
+          const value = setPluginSetting(pluginId, settingId, rawValue);
+          if (type === "boolean") control.setAttribute("aria-pressed", value ? "true" : "false");
+          const output = control.parentElement && control.parentElement.querySelector("[data-amazify-setting-output]");
+          if (output) output.textContent = NATIVE_STRING(value);
+        }} catch (error) {{
+          state.lastError = error.message || NATIVE_STRING(error);
+        }}
+      }};
+      if (type === "boolean") addTrustedLifecycleClick(control, update);
+      else control.addEventListener(type === "text" || type === "select" ? "change" : "input", update);
+    }});
+    panel.querySelectorAll("[data-amazify-clear-image-setting]").forEach((button) => {{
+      addTrustedLifecycleClick(button, () => {{
+        try {{
+          setPluginSetting(
+            button.dataset.amazifyClearImageSetting,
+            button.dataset.amazifyPluginSettingId,
+            ""
+          );
+          state.lastError = "";
+        }} catch (error) {{
+          state.lastError = error.message || NATIVE_STRING(error);
+        }}
+        renderPanel();
+      }});
+    }});
   }}
 
   function marketplacePlugins() {{
@@ -1043,9 +1619,11 @@ def build_runtime_script(
       : channel === "stock"
         ? "Amazify stock plugin with pinned source and SHA-256 verification"
         : "Local plugin - source integrity is managed by you";
-    const downloadButton = catalog
-      ? `<button class="amazify-primary" type="button" data-amazify-install-plugin="${{esc(manifest.id)}}" ${{incompatible ? "disabled" : ""}}>${{isInstalled ? (catalog.updateAvailable ? "Update" : "Reinstall") : "Download"}}</button>`
-      : "";
+    const actionButton = isInstalled
+      ? `<button class="amazify-quiet" type="button" data-amazify-open-plugin-settings="${{esc(manifest.id)}}">Settings</button>`
+      : catalog
+        ? `<button class="amazify-primary" type="button" data-amazify-install-plugin="${{esc(manifest.id)}}" ${{incompatible ? "disabled" : ""}}>Download</button>`
+        : "";
     const toggleButton = isInstalled
       ? `<button class="amazify-toggle" type="button" aria-label="Toggle ${{esc(manifest.name)}}" aria-pressed="${{installed.enabled ? "true" : "false"}}" data-amazify-toggle-plugin="${{esc(manifest.id)}}" ${{integrityFailed ? "disabled" : ""}}></button>`
       : "";
@@ -1056,7 +1634,7 @@ def build_runtime_script(
             <div class="amazify-plugin-name">${{esc(manifest.name)}}</div>
             <div class="amazify-plugin-meta">${{esc(channel)}} ${{esc(manifest.type)}} by ${{esc(manifest.author)}} - v${{esc(metaVersion)}}${{isInstalled ? " installed" : ""}}${{catalog && isInstalled && catalog.updateAvailable ? ` - update ${{esc(catalog.latestVersion || catalog.manifest.version)}} available` : ""}}</div>
           </div>
-          <div class="amazify-plugin-controls">${{downloadButton}}${{toggleButton}}</div>
+          <div class="amazify-plugin-controls">${{actionButton}}${{toggleButton}}</div>
         </div>
         <div class="amazify-plugin-desc">${{esc(manifest.description)}}</div>
         <div class="amazify-plugin-meta">${{esc(trustDetail)}}${{sourceCommit ? ` - source ${{esc(sourceCommit.slice(0, 12))}}` : ""}}${{installedVerified ? " - installed files verified" : (!isInstalled && verificationRequired ? " - SHA-256 verification required" : "")}}${{integrityFailed ? " - integrity check failed; execution blocked" : ""}}${{compatibilityDetail}}</div>
@@ -1418,8 +1996,12 @@ def build_runtime_script(
     const warning = trust === "community"
       ? "This is third-party community code. Review its source before enabling it."
       : "This is an Amazify stock plugin from a pinned source revision.";
+    const installed = NATIVE_MAP_HAS(state.plugins, pluginId);
+    const promptAction = installed
+      ? (catalog.updateAvailable ? "Install this update" : "Reinstall this plugin")
+      : "Download this plugin";
     const confirmed = NATIVE_CONFIRM(
-      `${{NATIVE_MAP_HAS(state.plugins, pluginId) ? "Install this update" : "Download this plugin"}}?\n\n` +
+      `${{promptAction}}?\n\n` +
       `${{manifest.name}} v${{manifest.version}}\n` +
       `Trust: ${{trust}}\nSource: ${{source}}\nPermissions: ${{permissions}}\n\n` +
       `${{warning}}\n\nThe download is checked against its catalog SHA-256 hashes and will remain disabled until you enable it.`
@@ -1641,14 +2223,14 @@ def build_runtime_script(
     }}
     const record = {{ key, pluginId, title, render: descriptor.render }};
     NATIVE_MAP_SET(state.settingsSections, key, record);
-    if (state.activePanel === "settings") renderPanel();
+    if (state.activePluginSettingsId === pluginId) renderPanel();
     let active = true;
     return () => {{
       if (!active) return;
       active = false;
       cleanupRenderedSettingsSections(pluginId);
       NATIVE_MAP_DELETE(state.settingsSections, key);
-      if (state.activePanel === "settings") renderPanel();
+      if (state.activePluginSettingsId === pluginId) renderPanel();
     }};
   }}
 
@@ -1756,6 +2338,9 @@ def build_runtime_script(
     const subscriptions = NATIVE_MAP_GET(state.capabilitySubscribers, pluginId) || [];
     for (let index = 0; index < subscriptions.length; index += 1) subscriptions[index].active = false;
     NATIVE_MAP_DELETE(state.capabilitySubscribers, pluginId);
+    const settingSubscribers = NATIVE_MAP_GET(state.pluginSettingSubscribers, pluginId) || [];
+    for (let index = 0; index < settingSubscribers.length; index += 1) settingSubscribers[index].active = false;
+    NATIVE_MAP_DELETE(state.pluginSettingSubscribers, pluginId);
     const capabilities = mapValuesSnapshot(state.capabilityProviders);
     for (let index = 0; index < capabilities.length; index += 1) {{
       if (capabilities[index].providerId === pluginId) revokeCapabilityRecord(capabilities[index]);
@@ -1773,6 +2358,7 @@ def build_runtime_script(
     const ui = NATIVE_FREEZE({{
       openMarketplace: () => openPanel("marketplace"),
       openSettings: () => openPanel("settings"),
+      openPluginSettings: () => openPluginSettings(pluginId),
       closePanel,
       addHeaderAction: (...args) => addHeaderActionForPlugin(pluginId, args),
       addSettingsSection: (descriptor) => addSettingsSectionForPlugin(pluginId, descriptor)
@@ -1790,11 +2376,19 @@ def build_runtime_script(
         return asset ? asset.dataUri : "";
       }}
     }});
+    const settings = NATIVE_FREEZE({{
+      get: (settingId) => pluginSettingValue(pluginId, manifest, NATIVE_STRING(settingId || "")),
+      set: (settingId, value) => setPluginSetting(pluginId, NATIVE_STRING(settingId || ""), value),
+      all: () => pluginSettingsSnapshot(pluginId, manifest),
+      subscribe: (listener) => subscribePluginSettings(pluginId, listener),
+      reset: () => resetPluginSettings(pluginId)
+    }});
     const api = {{
       version: VERSION,
       permissions: NATIVE_FREEZE(permissionList),
       ui,
       assets,
+      settings,
       capabilities: NATIVE_FREEZE({{
         provide: (name, definition) => provideCapabilityForPlugin(pluginId, name, definition),
         subscribe: (request, callback) => subscribeCapabilityForPlugin(pluginId, request, callback)

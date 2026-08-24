@@ -10,9 +10,51 @@ let frame = 0;
 let transportObserver = null;
 let observedTransport = null;
 let wasBigModeActive = false;
+let settingsCleanup = null;
+
+const themeSettingProperties = [
+  "--signal-primary",
+  "--signal-secondary",
+  "--signal-primary-rgb",
+  "--signal-secondary-rgb"
+];
+const originalThemeSettingProperties = new Map(
+  themeSettingProperties.map((property) => [
+    property,
+    {
+      value: document.body.style.getPropertyValue(property),
+      priority: document.body.style.getPropertyPriority(property)
+    }
+  ])
+);
+
+function normalizedColor(value, fallback) {
+  const color = String(value || "").trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(color) ? color : fallback;
+}
+
+function colorChannels(color) {
+  return [1, 3, 5]
+    .map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16))
+    .join(" ");
+}
+
+function applyThemeSettings(settings = {}) {
+  const primary = normalizedColor(settings.primaryColor, "#d9ff43");
+  const secondary = normalizedColor(settings.secondaryColor, "#ff745c");
+  document.body.style.setProperty("--signal-primary", primary);
+  document.body.style.setProperty("--signal-secondary", secondary);
+  document.body.style.setProperty("--signal-primary-rgb", colorChannels(primary));
+  document.body.style.setProperty("--signal-secondary-rgb", colorChannels(secondary));
+}
 
 document.body.classList.add(bodyClass);
 document.body.dataset.amazifyTheme = "signal-studio";
+if (Amazify.settings && typeof Amazify.settings.subscribe === "function") {
+  settingsCleanup = Amazify.settings.subscribe(applyThemeSettings);
+} else {
+  applyThemeSettings();
+}
 
 function own(node) {
   node.dataset.amazifyPluginId = pluginId;
@@ -317,6 +359,7 @@ document.addEventListener("keydown", focusSearch);
 sync();
 
 return () => {
+  if (settingsCleanup) settingsCleanup();
   documentObserver.disconnect();
   if (transportObserver) transportObserver.disconnect();
   if (frame) cancelAnimationFrame(frame);
@@ -350,4 +393,8 @@ return () => {
   document.body.style.removeProperty("--signal-search-left");
   document.body.style.removeProperty("--signal-search-top");
   document.body.style.removeProperty("--signal-search-width");
+  originalThemeSettingProperties.forEach(({ value, priority }, property) => {
+    if (value) document.body.style.setProperty(property, value, priority);
+    else document.body.style.removeProperty(property);
+  });
 };

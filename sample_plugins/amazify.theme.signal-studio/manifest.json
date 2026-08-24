@@ -1,7 +1,7 @@
 {
   "id": "amazify.theme.signal-studio",
   "name": "Signal Studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Amazify",
   "type": "theme",
   "description": "Rebuilds Amazon Music as a tactile studio interface with a navigation rail, editorial library views, reactive ambience, and a floating transport.",
@@ -12,6 +12,22 @@
     "signal-grain": "assets/grain.svg"
   },
   "permissions": ["dom-read", "dom-write", "dom-style"],
+  "settings": [
+    {
+      "id": "primaryColor",
+      "type": "color",
+      "label": "Main color",
+      "description": "Active navigation, playback progress, and primary highlights.",
+      "default": "#d9ff43"
+    },
+    {
+      "id": "secondaryColor",
+      "type": "color",
+      "label": "Secondary color",
+      "description": "Hover states, secondary highlights, warnings, and gradients.",
+      "default": "#ff745c"
+    }
+  ],
   "amazonMusic": {
     "testedAppVersions": [],
     "target": "desktop"

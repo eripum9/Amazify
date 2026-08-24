@@ -15,7 +15,7 @@ plugins without the required capability from gaining Amazify authority.
 - The user's authenticated Amazon Music renderer and data visible in its DOM.
 - Playback integrity and actions performed through Amazon Music controls.
 - Ephemeral bridge tokens, native-binding nonces, and DevTools session details.
-- Optional Spotify access/refresh tokens and OAuth PKCE state used by Karaoke Lyrics.
+- Optional Spotify access/refresh tokens and OAuth PKCE state retained for the archived Karaoke Lyrics prototype.
 - Installed plugin source, enabled state, catalog cache, settings, and logs.
 - The integrity and provenance of official catalog entries and candidate artifacts.
 - The integrity and provenance of application update metadata and installers.
@@ -24,6 +24,11 @@ plugins without the required capability from gaining Amazify authority.
 Amazon credentials, DRM keys, and subscription bypass are neither required nor
 intended Amazify assets. Code that attempts to collect or bypass them is outside
 the supported plugin model.
+
+Manifest-declared plugin preferences are stored in Amazon Music renderer local
+storage and are not confidential. The settings API validates values and scopes
+its interface by plugin ID, but renderer plugins are not sandboxed from the
+underlying page storage. Plugins must not use settings for credentials or tokens.
 
 ## Actors And Inputs
 
@@ -91,7 +96,8 @@ code because all enabled plugins still share the Amazon renderer.
 
 ### Lyrics Provider Boundary
 
-Only `amazify.karaoke-lyrics` may declare `lyrics-provider`. Spotify OAuth and
+Only the archived `amazify.karaoke-lyrics` prototype may declare
+`lyrics-provider`; no active catalog plugin receives it. Spotify OAuth and
 provider traffic execute in the native companion, not plugin JavaScript. OAuth
 uses Authorization Code with PKCE, a random loopback callback port and state,
 no client secret, and no scopes. Access tokens remain in memory and refresh
@@ -179,7 +185,7 @@ attested and uploaded to the workflow run; no release is created.
 - Unsigned executables do not provide Authenticode publisher identity and may trigger SmartScreen.
 - The updater's release identity ultimately depends on the security of the official GitHub repository and maintainer account.
 - Amazon Music DOM and launch behavior are unsupported upstream interfaces and may break safely or unexpectedly.
-- The shared Karaoke Lyrics renderer and capability consumers remain a renderer-level trust boundary.
+- The archived Karaoke Lyrics renderer and capability consumers remain a renderer-level trust boundary when manually tested.
 - Spicy Lyrics is an undocumented third-party service and may change, rate-limit, or reject compatibility requests.
 
 Sensitive findings should be reported as described in [`SECURITY.md`](../SECURITY.md).

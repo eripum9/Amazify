@@ -6,6 +6,10 @@ their own network behavior, which is separate from the companion's requests.
 
 ## Runtime Remote Endpoints
 
+The Spotify and Spicy Lyrics rows describe dormant support retained for the
+archived Karaoke Lyrics prototype. No active catalog plugin can invoke those
+endpoints.
+
 | Destination | Purpose | Authentication and validation | Limit |
 | --- | --- | --- | --- |
 | `https://api.github.com/repos/eripum9/Amazify/releases/latest` | Check the latest final Amazify application release | HTTPS, exact API URL, no redirects, bounded strict JSON, exact repository/tag/release/asset validation | 256 KiB response |
@@ -86,12 +90,13 @@ commands. They are not exposed by the localhost HTTP bridge or the plugin bridge
 capability. Installer launch additionally requires a trusted user click in the
 injected Settings interface.
 
-Karaoke Lyrics provider commands are also native-binding-only and are exposed
-only to the stock `amazify.karaoke-lyrics` plugin. Provider loads run on a
+Archived Karaoke Lyrics provider commands are also native-binding-only and are
+reserved for the exact `amazify.karaoke-lyrics` plugin ID. Provider loads run on a
 bounded native executor and carry cancelable request keys. Access tokens stay in
 native memory; refresh tokens are encrypted with Windows DPAPI under
 `%APPDATA%\Amazify`. Tokens, OAuth codes, states, and PKCE verifiers are never
-written to the lyrics cache or logs.
+written to the lyrics cache or logs. The active catalog does not distribute a
+plugin with this capability.
 
 ## Plugin Network Activity
 

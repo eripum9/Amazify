@@ -5,7 +5,7 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "..", "..");
-const sourceRoot = path.join(root, "sample_plugins", "amazify.karaoke-lyrics", "src");
+const sourceRoot = path.join(root, "sample_plugins", "Scrapped", "amazify.karaoke-lyrics", "src");
 const context = vm.createContext({ Karaoke: Object.create(null), console });
 for (const name of ["slobjpack.js", "normalization.js"]) {
   vm.runInContext(fs.readFileSync(path.join(sourceRoot, name), "utf8"), context, { filename: name });

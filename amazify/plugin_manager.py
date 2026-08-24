@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import mimetypes
 import os
 import re
@@ -46,6 +47,18 @@ MAX_PLUGIN_ASSET_BYTES = 5 * 1024 * 1024
 MAX_PLUGIN_PACKAGE_BYTES = 20 * 1024 * 1024
 MAX_REDIRECTS = 3
 PLUGIN_TYPES = {"theme", "ui"}
+PLUGIN_SETTING_TYPES = {"boolean", "color", "image", "range", "select", "text"}
+PLUGIN_SETTING_ID_RE = re.compile(r"^[a-z][A-Za-z0-9._-]{0,63}$")
+PLUGIN_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+MAX_PLUGIN_SETTINGS = 32
+MAX_PLUGIN_SETTING_OPTIONS = 64
+MAX_PLUGIN_SETTING_IMAGE_BYTES = 2 * 1024 * 1024
+PLUGIN_SETTING_IMAGE_MIME_TYPES = {
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+}
 TRUST_LEVELS = {"stock", "community"}
 PERMISSIONS = {
     "dom-style",
@@ -105,6 +118,7 @@ class PluginManifest:
     styles: list[str]
     assets: dict[str, str]
     permissions: list[str]
+    settings: list[dict[str, Any]]
     amazon_music: dict[str, Any]
 
     @classmethod
@@ -145,6 +159,7 @@ class PluginManifest:
             raise PluginError(f"Plugin {plugin_id} entry must be a string")
 
         assets = _normalize_assets(plugin_id, data.get("assets", {}))
+        settings = _normalize_plugin_settings(plugin_id, data.get("settings", []))
         amazon_music = data.get("amazonMusic", {})
         if not isinstance(amazon_music, dict):
             raise PluginError(f"Plugin {plugin_id} amazonMusic must be an object")
@@ -160,6 +175,7 @@ class PluginManifest:
             styles=[item.strip() for item in styles],
             assets=assets,
             permissions=list(permissions),
+            settings=settings,
             amazon_music=amazon_music,
         )
         if not manifest.entry and not manifest.styles:
@@ -178,6 +194,7 @@ class PluginManifest:
             "styles": list(self.styles),
             "assets": dict(self.assets),
             "permissions": list(self.permissions),
+            "settings": _json_copy(self.settings),
             "amazonMusic": dict(self.amazon_music),
         }
 
@@ -1368,6 +1385,196 @@ def _normalize_assets(plugin_id: str, value: object) -> dict[str, str]:
             assets[normalized_name] = path.strip()
         return assets
     raise PluginError(f"Plugin {plugin_id} assets must be a string list or string map")
+
+
+def _normalize_plugin_settings(
+    plugin_id: str, value: object
+) -> list[dict[str, Any]]:
+    if value in (None, []):
+        return []
+    if not isinstance(value, list) or len(value) > MAX_PLUGIN_SETTINGS:
+        raise PluginError(
+            f"Plugin {plugin_id} settings must be a list with at most "
+            f"{MAX_PLUGIN_SETTINGS} entries"
+        )
+
+    settings: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for raw in value:
+        if not isinstance(raw, dict):
+            raise PluginError(f"Plugin {plugin_id} settings must be objects")
+        setting_id = raw.get("id")
+        if not isinstance(setting_id, str) or not PLUGIN_SETTING_ID_RE.fullmatch(
+            setting_id
+        ):
+            raise PluginError(f"Plugin {plugin_id} has an invalid setting id")
+        if setting_id in seen_ids:
+            raise PluginError(f"Plugin {plugin_id} setting ids must not repeat")
+        seen_ids.add(setting_id)
+
+        setting_type = raw.get("type")
+        if setting_type not in PLUGIN_SETTING_TYPES:
+            raise PluginError(
+                f"Plugin {plugin_id} setting {setting_id} has an unsupported type"
+            )
+        label = _bounded_setting_text(plugin_id, setting_id, raw, "label", 80, True)
+        description = _bounded_setting_text(
+            plugin_id, setting_id, raw, "description", 240, False
+        )
+        normalized: dict[str, Any] = {
+            "id": setting_id,
+            "type": setting_type,
+            "label": label,
+            "description": description,
+        }
+
+        default = raw.get("default")
+        if setting_type == "boolean":
+            if not isinstance(default, bool):
+                raise PluginError(
+                    f"Plugin {plugin_id} setting {setting_id} requires a boolean default"
+                )
+        elif setting_type == "color":
+            if not isinstance(default, str) or not PLUGIN_COLOR_RE.fullmatch(default):
+                raise PluginError(
+                    f"Plugin {plugin_id} setting {setting_id} requires a #RRGGBB default"
+                )
+            default = default.lower()
+        elif setting_type == "range":
+            minimum = _finite_setting_number(plugin_id, setting_id, raw.get("min"), "min")
+            maximum = _finite_setting_number(plugin_id, setting_id, raw.get("max"), "max")
+            step = _finite_setting_number(plugin_id, setting_id, raw.get("step"), "step")
+            default = _finite_setting_number(plugin_id, setting_id, default, "default")
+            if maximum <= minimum or step <= 0 or not minimum <= default <= maximum:
+                raise PluginError(
+                    f"Plugin {plugin_id} setting {setting_id} has invalid range bounds"
+                )
+            normalized.update({"min": minimum, "max": maximum, "step": step})
+        elif setting_type == "image":
+            if default != "":
+                raise PluginError(
+                    f"Plugin {plugin_id} setting {setting_id} image default must be empty"
+                )
+            accept = raw.get(
+                "accept", ["image/png", "image/jpeg", "image/webp"]
+            )
+            if (
+                not isinstance(accept, list)
+                or not accept
+                or not all(
+                    isinstance(item, str)
+                    and item in PLUGIN_SETTING_IMAGE_MIME_TYPES
+                    for item in accept
+                )
+                or len(set(accept)) != len(accept)
+            ):
+                raise PluginError(
+                    f"Plugin {plugin_id} setting {setting_id} has invalid image types"
+                )
+            max_bytes = raw.get("maxBytes", 1024 * 1024)
+            if (
+                isinstance(max_bytes, bool)
+                or not isinstance(max_bytes, int)
+                or not 1024 <= max_bytes <= MAX_PLUGIN_SETTING_IMAGE_BYTES
+            ):
+                raise PluginError(
+                    f"Plugin {plugin_id} setting {setting_id} has invalid maxBytes"
+                )
+            normalized.update({"accept": list(accept), "maxBytes": max_bytes})
+        elif setting_type == "select":
+            options = raw.get("options")
+            if (
+                not isinstance(options, list)
+                or not options
+                or len(options) > MAX_PLUGIN_SETTING_OPTIONS
+            ):
+                raise PluginError(
+                    f"Plugin {plugin_id} setting {setting_id} requires select options"
+                )
+            normalized_options: list[dict[str, str]] = []
+            option_values: set[str] = set()
+            for option in options:
+                if not isinstance(option, dict):
+                    raise PluginError(
+                        f"Plugin {plugin_id} setting {setting_id} options must be objects"
+                    )
+                option_value = _bounded_setting_text(
+                    plugin_id, setting_id, option, "value", 128, True
+                )
+                option_label = _bounded_setting_text(
+                    plugin_id, setting_id, option, "label", 80, True
+                )
+                if option_value in option_values:
+                    raise PluginError(
+                        f"Plugin {plugin_id} setting {setting_id} option values must not repeat"
+                    )
+                option_values.add(option_value)
+                normalized_options.append(
+                    {"value": option_value, "label": option_label}
+                )
+            if not isinstance(default, str) or default not in option_values:
+                raise PluginError(
+                    f"Plugin {plugin_id} setting {setting_id} default must match an option"
+                )
+            normalized["options"] = normalized_options
+        else:
+            max_length = raw.get("maxLength", 256)
+            if (
+                isinstance(max_length, bool)
+                or not isinstance(max_length, int)
+                or not 1 <= max_length <= 1024
+            ):
+                raise PluginError(
+                    f"Plugin {plugin_id} setting {setting_id} has an invalid maxLength"
+                )
+            if not isinstance(default, str) or len(default) > max_length:
+                raise PluginError(
+                    f"Plugin {plugin_id} setting {setting_id} has an invalid text default"
+                )
+            normalized["maxLength"] = max_length
+            normalized["placeholder"] = _bounded_setting_text(
+                plugin_id, setting_id, raw, "placeholder", 120, False
+            )
+
+        normalized["default"] = default
+        settings.append(normalized)
+    return settings
+
+
+def _bounded_setting_text(
+    plugin_id: str,
+    setting_id: str,
+    data: dict[str, Any],
+    key: str,
+    limit: int,
+    required: bool,
+) -> str:
+    value = data.get(key, "")
+    if not isinstance(value, str):
+        raise PluginError(
+            f"Plugin {plugin_id} setting {setting_id} field {key} must be a string"
+        )
+    value = value.strip()
+    if (required and not value) or len(value) > limit:
+        raise PluginError(
+            f"Plugin {plugin_id} setting {setting_id} field {key} is invalid"
+        )
+    return value
+
+
+def _finite_setting_number(
+    plugin_id: str, setting_id: str, value: object, field: str
+) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise PluginError(
+            f"Plugin {plugin_id} setting {setting_id} field {field} must be numeric"
+        )
+    number = float(value)
+    if not math.isfinite(number) or abs(number) > 1_000_000:
+        raise PluginError(
+            f"Plugin {plugin_id} setting {setting_id} field {field} is out of range"
+        )
+    return number
 
 
 def _json_copy(value: Any) -> Any:
