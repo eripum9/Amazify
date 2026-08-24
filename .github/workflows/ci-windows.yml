@@ -20,6 +20,8 @@ jobs:
   test:
     name: Test on Windows
     runs-on: windows-2025
+    env:
+      AMAZIFY_SPOTIFY_CLIENT_ID: ci-dummy-public-client-id
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -39,6 +41,13 @@ jobs:
 
       - name: Compile Python sources
         run: python -m compileall -q amazify packaging tests
+
+      - name: Verify Karaoke Lyrics bundle
+        run: |
+          python scripts/build_karaoke_lyrics.py --check
+          node --check sample_plugins/amazify.karaoke-lyrics/plugin.js
+          node --check sample_plugins/amazify.true-big-mode/plugin.js
+          node --test tests/js/karaoke_lyrics.test.js
 
       - name: Run tests with coverage
         run: python -m pytest tests --cov=amazify --cov-report=term-missing --cov-fail-under=45

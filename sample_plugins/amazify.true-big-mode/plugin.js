@@ -10,23 +10,10 @@ const EXIT_PROXY_ATTR = "data-amazify-true-big-mode-exit-proxy";
 const OVERLAY_CLASS = "amazify-true-big-mode-exit-overlay";
 const DYNAMIC_BG_CLASS = "amazify-true-big-mode-dynamic-bg";
 const PROGRESS_CLASS = "amazify-true-big-mode-progress";
-const LYRIC_LINE_CLASS = "amazify-true-big-mode-lyric-line";
-const LYRIC_ACTIVE_CLASS = "amazify-true-big-mode-lyric-active";
-const LETTER_CLASS = "amazify-true-big-mode-letter";
-const WORD_CLASS = "amazify-true-big-mode-word";
-const WORD_ACTIVE_CLASS = "amazify-true-big-mode-word-active";
-const LYRICS_SCROLLING_CLASS = "amazify-true-big-mode-lyrics-scrolling";
 const NO_LYRICS_CLASS = "amazify-true-big-mode-no-lyrics";
-const SPICY_LYRICS_API_URL = "https://api.spicylyrics.org";
-const SPICY_LYRICS_VERSION = "1.1";
 const NO_LYRICS_LAYOUT_DELAY_MS = 700;
 const LYRICS_LAYOUT_CONFIRM_MS = 700;
 const NO_LYRICS_LAYOUT_TRANSITION_MS = 2000;
-const LYRICS_MANUAL_SCROLL_WINDOW_MS = 1200;
-const LYRICS_SCROLLBAR_HIDE_DELAY_MS = 900;
-const SPOTIFY_TOKEN_STORAGE_KEY = "amazify.true-big-mode.spotifyAccessToken";
-const SPOTIFY_TRACK_ID_STORAGE_KEY = "amazify.true-big-mode.spotifyTrackId";
-const SPOTIFY_TRACK_ID_PREFIX = "amazify.true-big-mode.spotifyTrackId:";
 const MIN_VISIBLE_ART_SIZE = 80;
 
 let observer = null;
@@ -36,15 +23,10 @@ let originalArtAttributes = null;
 let dynamicBackground = null;
 let progressNode = null;
 let lastArtworkUrl = "";
-let lastActiveLyric = null;
 let stableProgressTrackKey = "";
 let stableProgressDuration = 0;
 let isProgressSeeking = false;
 let previewProgressFraction = null;
-let spicyLyricsTrackKey = "";
-let spicyLyricsStatus = "idle";
-let spicyLyricsData = null;
-let lastTimedLyricLine = null;
 let missingLyricsTrackKey = "";
 let missingLyricsSince = 0;
 let centeredNoLyricsTrackKey = "";
@@ -53,7 +35,11 @@ let presentLyricsSince = 0;
 let syncTimer = null;
 let syncFrame = null;
 let intervalId = null;
-let lyricScrollBindings = new Map();
+let lyricsCapability = null;
+let lyricsSnapshot = null;
+let releaseLyricsClaim = null;
+let unsubscribeLyricsSnapshot = null;
+let unsubscribeLyricsCapability = null;
 let fullscreenArmedUntil = 0;
 let fullscreenAttempted = false;
 let fullscreenEnteredByPlugin = false;
@@ -280,289 +266,6 @@ function stableDurationForTrack(root, measuredDuration) {
     stableProgressDuration = measuredDuration;
   }
   return stableProgressDuration;
-}
-
-function hashString(value) {
-  let hash = 0;
-  const text = String(value || "");
-  for (let index = 0; index < text.length; index += 1) {
-    hash = (hash * 31 + text.charCodeAt(index)) | 0;
-  }
-  return String(Math.abs(hash));
-}
-
-function normalizeLyricText(value) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9' ]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function unpackSLObjPack(packed) {
-  if (!Array.isArray(packed) || packed.length !== 2 || !Array.isArray(packed[0]) || !Array.isArray(packed[1])) {
-    return packed;
-  }
-  const values = packed[0];
-  const stream = packed[1];
-  let cursor = 0;
-
-  function read() {
-    if (cursor >= stream.length) {
-      throw new Error("Packed lyrics ended early");
-    }
-    return stream[cursor++];
-  }
-
-  function pointer(index) {
-    if (typeof index !== "number" || index < 0 || index >= values.length) {
-      throw new Error("Packed lyrics pointer out of bounds");
-    }
-    return values[index];
-  }
-
-  function readKey() {
-    const key = pointer(read());
-    if (typeof key !== "string" || key === "__proto__" || key === "constructor" || key === "prototype") {
-      throw new Error("Packed lyrics key is unsafe");
-    }
-    return key;
-  }
-
-  function decode(depth) {
-    if (depth > 256) {
-      throw new Error("Packed lyrics are too deeply nested");
-    }
-    const op = read();
-    if (typeof op !== "number" || !Number.isInteger(op)) {
-      throw new Error("Packed lyrics opcode is invalid");
-    }
-    if (op >= 0) {
-      return pointer(op);
-    }
-    if (op === -1) {
-      const count = read();
-      const keys = [];
-      const obj = {};
-      for (let index = 0; index < count; index += 1) {
-        keys.push(readKey());
-      }
-      for (let index = 0; index < count; index += 1) {
-        Object.defineProperty(obj, keys[index], {
-          value: decode(depth + 1),
-          enumerable: true,
-          configurable: true,
-          writable: true,
-        });
-      }
-      return obj;
-    }
-    if (op === -2) {
-      const count = read();
-      const arr = [];
-      for (let index = 0; index < count; index += 1) {
-        arr.push(decode(depth + 1));
-      }
-      return arr;
-    }
-    if (op === -3) {
-      const itemCount = read();
-      const keyCount = read();
-      const keys = [];
-      const arr = [];
-      for (let index = 0; index < keyCount; index += 1) {
-        keys.push(readKey());
-      }
-      for (let itemIndex = 0; itemIndex < itemCount; itemIndex += 1) {
-        const obj = {};
-        for (let keyIndex = 0; keyIndex < keyCount; keyIndex += 1) {
-          Object.defineProperty(obj, keys[keyIndex], {
-            value: decode(depth + 1),
-            enumerable: true,
-            configurable: true,
-            writable: true,
-          });
-        }
-        arr.push(obj);
-      }
-      return arr;
-    }
-    if (op === -4) {
-      return [];
-    }
-    if (op === -5) {
-      return [decode(depth + 1)];
-    }
-    if (op === -6) {
-      return {};
-    }
-    throw new Error("Packed lyrics opcode is unknown");
-  }
-
-  return decode(0);
-}
-
-function getStoredSpotifyToken() {
-  try {
-    return (
-      window.localStorage.getItem(SPOTIFY_TOKEN_STORAGE_KEY) ||
-      window.sessionStorage.getItem(SPOTIFY_TOKEN_STORAGE_KEY) ||
-      ""
-    ).trim();
-  } catch (_error) {
-    return "";
-  }
-}
-
-function extractSpotifyTrackIdFromText(value) {
-  const text = String(value || "");
-  const uriMatch = text.match(/spotify:track:([A-Za-z0-9]{16,32})/);
-  if (uriMatch) {
-    return uriMatch[1];
-  }
-  const urlMatch = text.match(/open\.spotify\.com\/track\/([A-Za-z0-9]{16,32})/);
-  return urlMatch ? urlMatch[1] : "";
-}
-
-function getStoredSpotifyTrackId(trackKey) {
-  try {
-    return (
-      window.localStorage.getItem(`${SPOTIFY_TRACK_ID_PREFIX}${hashString(trackKey)}`) ||
-      window.localStorage.getItem(SPOTIFY_TRACK_ID_STORAGE_KEY) ||
-      ""
-    ).trim();
-  } catch (_error) {
-    return "";
-  }
-}
-
-function extractSpotifyTrackId(root, trackKey) {
-  const stored = getStoredSpotifyTrackId(trackKey);
-  if (stored) {
-    return extractSpotifyTrackIdFromText(stored) || stored;
-  }
-  const candidates = Array.from(
-    document.querySelectorAll("[href], [data-uri], [data-track-uri], [data-spotify-id]")
-  );
-  for (const candidate of candidates) {
-    const id = extractSpotifyTrackIdFromText(
-      [
-        candidate.getAttribute("href"),
-        candidate.getAttribute("data-uri"),
-        candidate.getAttribute("data-track-uri"),
-        candidate.getAttribute("data-spotify-id"),
-      ].join(" ")
-    );
-    if (id) {
-      return id;
-    }
-  }
-  return extractSpotifyTrackIdFromText(root.innerHTML.slice(0, 50000));
-}
-
-function syllableLineText(syllables) {
-  let text = "";
-  syllables.forEach((syllable, index) => {
-    if (index > 0 && !syllable.IsPartOfWord) {
-      text += " ";
-    }
-    text += syllable.Text || "";
-  });
-  return text;
-}
-
-function normalizeSpicyLyrics(rawLyrics) {
-  if (!rawLyrics || !Array.isArray(rawLyrics.Content)) {
-    return null;
-  }
-  const lines = [];
-  rawLyrics.Content.forEach((content) => {
-    const lead = content && content.Lead;
-    const syllables = lead && Array.isArray(lead.Syllables) ? lead.Syllables : [];
-    if (!syllables.length) {
-      return;
-    }
-    lines.push({
-      text: syllableLineText(syllables),
-      normalizedText: normalizeLyricText(syllableLineText(syllables)),
-      startTime: Number(lead.StartTime || syllables[0].StartTime || 0),
-      endTime: Number(lead.EndTime || syllables[syllables.length - 1].EndTime || 0),
-      syllables,
-    });
-  });
-  return lines.length ? { type: rawLyrics.Type, lines } : null;
-}
-
-function fetchSpicyLyricsIfPossible(root) {
-  const trackKey = getProgressTrackKey(root);
-  if (trackKey !== spicyLyricsTrackKey) {
-    spicyLyricsTrackKey = trackKey;
-    spicyLyricsStatus = "idle";
-    spicyLyricsData = null;
-    lastTimedLyricLine = null;
-  }
-  if (spicyLyricsStatus !== "idle") {
-    return;
-  }
-
-  const token = getStoredSpotifyToken();
-  const spotifyTrackId = extractSpotifyTrackId(root, trackKey);
-  if (!token || !spotifyTrackId) {
-    spicyLyricsStatus = "unavailable";
-    return;
-  }
-
-  spicyLyricsStatus = "loading";
-  fetch(`${SPICY_LYRICS_API_URL}/query`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "SpicyLyrics-Version": SPICY_LYRICS_VERSION,
-      "SpicyLyrics-WebAuth": `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      queries: [
-        {
-          operation: "lyrics",
-          variables: {
-            id: spotifyTrackId,
-            auth: "SpicyLyrics-WebAuth",
-          },
-        },
-      ],
-      client: {
-        version: SPICY_LYRICS_VERSION,
-      },
-    }),
-  })
-    .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
-    .then((payload) => {
-      const query = payload && payload.queries && payload.queries[0] && payload.queries[0].result;
-      if (!query || query.httpStatus !== 200 || !query.data) {
-        throw new Error("No timed lyrics returned");
-      }
-      spicyLyricsData = normalizeSpicyLyrics(unpackSLObjPack(query.data));
-      spicyLyricsStatus = spicyLyricsData ? "ready" : "unavailable";
-    })
-    .catch(() => {
-      spicyLyricsStatus = "unavailable";
-      spicyLyricsData = null;
-    });
-}
-
-function findTimedLyricLine(text) {
-  if (!spicyLyricsData || !Array.isArray(spicyLyricsData.lines)) {
-    return null;
-  }
-  const normalized = normalizeLyricText(text);
-  if (!normalized) {
-    return null;
-  }
-  return (
-    spicyLyricsData.lines.find((line) => line.normalizedText === normalized) ||
-    spicyLyricsData.lines.find((line) => line.normalizedText.includes(normalized) || normalized.includes(line.normalizedText)) ||
-    null
-  );
 }
 
 function progressFractionFromEvent(event) {
@@ -1348,165 +1051,6 @@ function elementText(element) {
   return String(element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
 }
 
-function isInsideTrackChrome(element) {
-  return Boolean(
-    element.closest(
-      ".track, .artwork, .closeButtonWrapper, #transport, .amazify-true-big-mode-exit-overlay"
-    )
-  );
-}
-
-function isLikelyLyricLine(element) {
-  if (!(element instanceof HTMLElement) || isInsideTrackChrome(element)) {
-    return false;
-  }
-  const text = elementText(element);
-  if (text.length < 2 || text.length > 220) {
-    return false;
-  }
-  const rect = element.getBoundingClientRect();
-  if (
-    rect.width < 120 ||
-    rect.height < 18 ||
-    rect.x < window.innerWidth * 0.32 ||
-    rect.bottom < 0 ||
-    rect.top > window.innerHeight
-  ) {
-    return false;
-  }
-  const childTextBlocks = Array.from(element.children).filter((child) => {
-    const childRect = child.getBoundingClientRect();
-    return childRect.height > 14 && elementText(child).length > 0;
-  });
-  const className = String(element.className || "").toLowerCase();
-  const parentClassName = String(element.parentElement ? element.parentElement.className : "").toLowerCase();
-  const isLyricsText =
-    className.includes("lyricstext") ||
-    className.includes("lyrics-text") ||
-    className.includes("lyric-text");
-  if (!isLyricsText && childTextBlocks.length > 0) {
-    return false;
-  }
-  if (
-    className.includes("lyricscontainer") ||
-    className.includes("lyricswrapper") ||
-    className.includes("lyricsscroller")
-  ) {
-    return false;
-  }
-  return (
-    isLyricsText ||
-    parentClassName.includes("lyric") ||
-    parentClassName.includes("lyrics")
-  );
-}
-
-function findAmazonCurrentLyricLine(view, lines) {
-  const selectors = [
-    ".lyricsLine.current .lyricsText",
-    ".lyricsLine.current [class*='lyricsText']",
-    "[class*='lyricsLine'][class*='current'] [class*='lyricsText']",
-    "[class*='current'] .lyricsText",
-  ];
-  for (const selector of selectors) {
-    const candidate = view.querySelector(selector);
-    if (!candidate) {
-      continue;
-    }
-    if (lines.indexOf(candidate) !== -1) {
-      return candidate;
-    }
-    const child = Array.from(candidate.querySelectorAll(".lyricsText, [class*='lyricsText']")).find(
-      (node) => lines.indexOf(node) !== -1
-    );
-    if (child) {
-      return child;
-    }
-  }
-  return null;
-}
-
-function lyricActiveScore(element) {
-  const className = String(element.className || "").toLowerCase();
-  const style = window.getComputedStyle(element);
-  const rect = element.getBoundingClientRect();
-  if (rect.bottom < 0 || rect.top > window.innerHeight) {
-    return -Infinity;
-  }
-  let score = 0;
-  if (/(active|current|selected|highlight|playing|focused)/.test(className)) {
-    score += 100;
-  }
-  if (Number.parseFloat(style.opacity || "1") >= 0.82) {
-    score += 12;
-  }
-  if (Number.parseInt(style.fontWeight, 10) >= 700) {
-    score += 16;
-  }
-  const colorMatch = style.color.match(/\d+(\.\d+)?/g);
-  if (colorMatch) {
-    const [r, g, b] = colorMatch.map(Number);
-    if ((r + g + b) / 3 > 170) {
-      score += 15;
-    }
-  }
-  const centerDistance = Math.abs(rect.top + rect.height / 2 - window.innerHeight / 2);
-  score += Math.max(0, 32 - centerDistance / 12);
-  return score;
-}
-
-function renderTimedLyricLine(element, timedLine, currentSeconds) {
-  const text = elementText(element);
-  if (!timedLine || !Array.isArray(timedLine.syllables)) {
-    return false;
-  }
-  const renderKey = `${timedLine.normalizedText}|${timedLine.syllables.length}`;
-  if (element.dataset.amazifyTimedLyricKey !== renderKey) {
-    element.dataset.amazifyLyricText = text;
-    element.dataset.amazifyTimedLyricKey = renderKey;
-    element.textContent = "";
-    timedLine.syllables.forEach((syllable, index) => {
-      if (index > 0 && !syllable.IsPartOfWord) {
-        element.appendChild(document.createTextNode(" "));
-      }
-      const span = document.createElement("span");
-      span.className = WORD_CLASS;
-      span.textContent = syllable.Text || "";
-      span.setAttribute("data-amazify-word-start", String(Number(syllable.StartTime || 0)));
-      span.setAttribute("data-amazify-word-end", String(Number(syllable.EndTime || 0)));
-      element.appendChild(span);
-    });
-  }
-
-  const currentMs = currentSeconds * 1000;
-  element.querySelectorAll(`.${WORD_CLASS}`).forEach((word) => {
-    const start = Number(word.getAttribute("data-amazify-word-start") || "0");
-    word.classList.toggle(WORD_ACTIVE_CLASS, currentMs >= start);
-  });
-  return true;
-}
-
-function unwrapLyricEnhancements(element) {
-  if (element.hasAttribute("data-amazify-lyric-text")) {
-    element.textContent = element.getAttribute("data-amazify-lyric-text") || "";
-    element.removeAttribute("data-amazify-lyric-text");
-  }
-  element.removeAttribute("data-amazify-timed-lyric-key");
-  element.style.removeProperty("--amazify-letter-count");
-}
-
-function restoreLyricElement(element) {
-  unwrapLyricEnhancements(element);
-  element.classList.remove(LYRIC_LINE_CLASS, LYRIC_ACTIVE_CLASS);
-}
-
-function restoreLyricEnhancements() {
-  document.querySelectorAll(
-    `[data-amazify-lyric-text], [data-amazify-timed-lyric-key], .${LYRIC_LINE_CLASS}, .${LYRIC_ACTIVE_CLASS}`
-  ).forEach(restoreLyricElement);
-  lastActiveLyric = null;
-}
-
 function resetNoLyricsState(root = null) {
   missingLyricsTrackKey = "";
   missingLyricsSince = 0;
@@ -1619,188 +1163,54 @@ function syncNoLyricsState(root, hasLyrics) {
   }
 }
 
-function isLikelyLyricScroller(element) {
-  if (!(element instanceof HTMLElement) || isInsideTrackChrome(element)) {
-    return false;
-  }
-  const className = String(element.className || "").toLowerCase();
-  if (
-    !className.includes("lyricscontainer") &&
-    !className.includes("lyricswrapper") &&
-    !className.includes("lyricsscroller")
-  ) {
-    return false;
-  }
-  return element.scrollHeight > element.clientHeight + 8;
-}
-
-function showLyricScrollbarTemporarily(element) {
-  const binding = lyricScrollBindings.get(element);
-  if (!binding) {
-    return;
-  }
-  element.classList.add(LYRICS_SCROLLING_CLASS);
-  if (binding.timer !== null) {
-    window.clearTimeout(binding.timer);
-  }
-  binding.timer = window.setTimeout(() => {
-    binding.timer = null;
-    element.classList.remove(LYRICS_SCROLLING_CLASS);
-  }, LYRICS_SCROLLBAR_HIDE_DELAY_MS);
-}
-
-function hideLyricScrollbar(element) {
-  const binding = lyricScrollBindings.get(element);
-  if (!binding) {
-    return;
-  }
-  if (binding.timer !== null) {
-    window.clearTimeout(binding.timer);
-    binding.timer = null;
-  }
-  element.classList.remove(LYRICS_SCROLLING_CLASS);
-}
-
-function markManualLyricScroll(element) {
-  const binding = lyricScrollBindings.get(element);
-  if (!binding) {
-    return;
-  }
-  binding.manualUntil = window.performance.now() + LYRICS_MANUAL_SCROLL_WINDOW_MS;
-}
-
-function onLyricScrollKeydown(event, element) {
-  if (
-    event.key === "ArrowDown" ||
-    event.key === "ArrowUp" ||
-    event.key === "PageDown" ||
-    event.key === "PageUp" ||
-    event.key === "Home" ||
-    event.key === "End" ||
-    event.key === " "
-  ) {
-    markManualLyricScroll(element);
+function releaseCurrentLyricsClaim() {
+  if (releaseLyricsClaim) {
+    releaseLyricsClaim();
+    releaseLyricsClaim = null;
   }
 }
 
-function bindLyricScrollbar(element) {
-  if (lyricScrollBindings.has(element)) {
-    return;
+function setLyricsCapability(capability) {
+  releaseCurrentLyricsClaim();
+  if (unsubscribeLyricsSnapshot) {
+    unsubscribeLyricsSnapshot();
+    unsubscribeLyricsSnapshot = null;
   }
-  const binding = {
-    timer: null,
-    manualUntil: 0,
-    onScroll: () => {
-      if (window.performance.now() <= binding.manualUntil) {
-        showLyricScrollbarTemporarily(element);
-      } else {
-        hideLyricScrollbar(element);
-      }
-    },
-    onWheel: () => markManualLyricScroll(element),
-    onPointerDown: () => markManualLyricScroll(element),
-    onTouchStart: () => markManualLyricScroll(element),
-    onKeydown: (event) => onLyricScrollKeydown(event, element),
-  };
-  lyricScrollBindings.set(element, binding);
-  element.addEventListener("scroll", binding.onScroll, { passive: true });
-  element.addEventListener("wheel", binding.onWheel, { passive: true });
-  element.addEventListener("pointerdown", binding.onPointerDown, { passive: true });
-  element.addEventListener("touchstart", binding.onTouchStart, { passive: true });
-  element.addEventListener("keydown", binding.onKeydown, true);
-}
-
-function cleanupLyricScrollbars(root = null) {
-  for (const [element, binding] of lyricScrollBindings) {
-    if (root && element.isConnected && root.contains(element)) {
-      continue;
-    }
-    element.removeEventListener("scroll", binding.onScroll);
-    element.removeEventListener("wheel", binding.onWheel);
-    element.removeEventListener("pointerdown", binding.onPointerDown);
-    element.removeEventListener("touchstart", binding.onTouchStart);
-    element.removeEventListener("keydown", binding.onKeydown, true);
-    element.classList.remove(LYRICS_SCROLLING_CLASS);
-    if (binding.timer !== null) {
-      window.clearTimeout(binding.timer);
-    }
-    lyricScrollBindings.delete(element);
-  }
-}
-
-function syncLyricScrollbars(root) {
-  if (!root) {
-    cleanupLyricScrollbars();
-    return;
-  }
-  cleanupLyricScrollbars(root);
-  root
-    .querySelectorAll(".lyricsContainer, .lyricsWrapper, .lyricsScroller, [class*='lyricsContainer'], [class*='lyricsWrapper'], [class*='lyricsScroller'], [class*='LyricsContainer'], [class*='LyricsWrapper'], [class*='LyricsScroller']")
-    .forEach((element) => {
-      if (isLikelyLyricScroller(element)) {
-        bindLyricScrollbar(element);
-      }
+  lyricsCapability = capability;
+  lyricsSnapshot = capability ? capability.getSnapshot() : null;
+  if (capability) {
+    unsubscribeLyricsSnapshot = capability.subscribe((snapshot) => {
+      lyricsSnapshot = snapshot;
+      scheduleSync();
     });
+  }
+  scheduleSync();
 }
 
-function enhanceLyrics(root) {
-  const view = root.querySelector(VIEW_SELECTOR);
-  if (!view) {
-    resetNoLyricsState(root);
+function nativeTrackHasLyrics(root) {
+  const transport = document.querySelector("#transportContainer");
+  const vue = transport && transport.__vue__;
+  const track = vue && vue.track;
+  if (track && typeof track.hasLyrics === "boolean") return track.hasLyrics;
+  return Boolean(root.querySelector(".lyricsScroller .lyricsLine, .lyricsScroller .lyricsText"));
+}
+
+function syncLyricsPresentation(root) {
+  const wrapper = root.querySelector(`${VIEW_SELECTOR} .lyricsContainer .lyricsWrapper`);
+  if (lyricsCapability && wrapper && !releaseLyricsClaim) {
+    releaseLyricsClaim = lyricsCapability.claimHost(wrapper, {
+      presentation: "true-big-mode",
+      priority: 100,
+    });
+  }
+  if (!lyricsCapability || !wrapper) releaseCurrentLyricsClaim();
+
+  if (lyricsCapability) {
+    if (!lyricsSnapshot || lyricsSnapshot.status === "idle" || lyricsSnapshot.status === "loading") return;
+    syncNoLyricsState(root, Boolean(lyricsSnapshot.hasLyrics));
     return;
   }
-  fetchSpicyLyricsIfPossible(root);
-  const lines = Array.from(view.querySelectorAll(".lyricsText, [class*='lyricsText']")).filter(isLikelyLyricLine);
-  syncNoLyricsState(root, lines.length > 0);
-  const enhancedLines = Array.from(
-    view.querySelectorAll(
-      `.${LYRIC_LINE_CLASS}, .${LYRIC_ACTIVE_CLASS}, [data-amazify-lyric-text], [data-amazify-timed-lyric-key]`
-    )
-  );
-  enhancedLines.forEach((line) => {
-    if (lines.indexOf(line) === -1) {
-      restoreLyricElement(line);
-    }
-  });
-  if (!lines.length) {
-    lastActiveLyric = null;
-    return;
-  }
-
-  let activeLine = findAmazonCurrentLyricLine(view, lines);
-  let activeScore = -Infinity;
-  const progress = readProgressTimes(root);
-  const currentSeconds = progress ? progress.current : 0;
-  lines.forEach((line) => {
-    line.classList.add(LYRIC_LINE_CLASS);
-    if (activeLine) {
-      return;
-    }
-    const score = lyricActiveScore(line);
-    if (score > activeScore) {
-      activeLine = line;
-      activeScore = score;
-    }
-  });
-
-  lines.forEach((line) => {
-    const isActive = line === activeLine;
-    if (isActive) {
-      const timedLine = findTimedLyricLine(elementText(line));
-      if (!renderTimedLyricLine(line, timedLine, currentSeconds)) {
-        unwrapLyricEnhancements(line);
-      }
-      if (lastActiveLyric !== line) {
-        line.classList.remove(LYRIC_ACTIVE_CLASS);
-        void line.offsetWidth;
-      }
-      line.classList.add(LYRIC_ACTIVE_CLASS);
-    } else {
-      unwrapLyricEnhancements(line);
-      line.classList.remove(LYRIC_ACTIVE_CLASS);
-    }
-  });
-  lastActiveLyric = activeLine;
+  syncNoLyricsState(root, nativeTrackHasLyrics(root));
 }
 
 function syncPolishedBigMode(root, art) {
@@ -1809,8 +1219,7 @@ function syncPolishedBigMode(root, art) {
   ensureProgress(root, art);
   syncProgress(root);
   syncHoverControls();
-  syncLyricScrollbars(root);
-  enhanceLyrics(root);
+  syncLyricsPresentation(root);
 }
 
 function syncFastBigModeState() {
@@ -1821,8 +1230,7 @@ function syncFastBigModeState() {
   }
   syncProgress(root);
   syncHoverControls();
-  syncLyricScrollbars(root);
-  enhanceLyrics(root);
+  syncLyricsPresentation(root);
 }
 
 function restorePolishedBigMode() {
@@ -1836,17 +1244,11 @@ function restorePolishedBigMode() {
     progressNode = null;
   }
   lastArtworkUrl = "";
-  lastActiveLyric = null;
   stableProgressTrackKey = "";
   stableProgressDuration = 0;
   previewProgressFraction = null;
   resetNoLyricsState();
-  spicyLyricsTrackKey = "";
-  spicyLyricsStatus = "idle";
-  spicyLyricsData = null;
-  lastTimedLyricLine = null;
-  cleanupLyricScrollbars();
-  restoreLyricEnhancements();
+  releaseCurrentLyricsClaim();
 }
 
 function syncBigMode() {
@@ -1898,6 +1300,15 @@ function scheduleSync() {
   }, 120);
 }
 
+unsubscribeLyricsCapability = Amazify.capabilities.subscribe(
+  {
+    name: "amazify.karaoke-lyrics.presentation",
+    providerId: "amazify.karaoke-lyrics",
+    major: 1,
+  },
+  setLyricsCapability
+);
+
 observer = new MutationObserver(scheduleSync);
 observer.observe(document.documentElement, {
   childList: true,
@@ -1921,6 +1332,9 @@ return () => {
     window.clearInterval(intervalId);
   }
   document.removeEventListener("click", maybeArmFullscreen, true);
+  if (unsubscribeLyricsCapability) unsubscribeLyricsCapability();
+  if (unsubscribeLyricsSnapshot) unsubscribeLyricsSnapshot();
+  releaseCurrentLyricsClaim();
   document.body.classList.remove(ACTIVE_CLASS, READY_CLASS);
   unbindAlbumArt();
   restorePolishedBigMode();

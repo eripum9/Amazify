@@ -385,7 +385,12 @@ def inject_connection(
     client = DevToolsClient(connection.target)
     try:
         client.connect()
-        native_bridge = NativeBindingBridge(client, plugin_manager, app_updater)
+        native_bridge = NativeBindingBridge(
+            client,
+            plugin_manager,
+            app_updater,
+            lyrics_state_dir=config.state_dir,
+        )
         native_bridge.install()
         probe = client.probe_amazon_music()
         remember_devtools_port(config)

@@ -12,6 +12,10 @@ their own network behavior, which is separate from the companion's requests.
 | `https://github.com/eripum9/Amazify/releases/download/v<version>/AmazifySetup.exe` | Download a user-approved application update | HTTPS, exact repository/tag/asset path, at most three validated redirects to GitHub release-asset hosts, advertised size, mandatory GitHub SHA-256 digest | 256 MiB installer |
 | `https://raw.githubusercontent.com/eripum9/Amazify/main/plugin_catalog.json` | Fetch the official catalog update index when the store opens | HTTPS, exact host/repository/path, bounded response, schema validation | 1 MiB response |
 | `https://raw.githubusercontent.com/<owner>/<repo>/<40-char-commit>/<path>` | Fetch a catalog-pinned manifest, script, stylesheet, font, image, or other declared asset | HTTPS, catalog-approved repository and commit, normalized path, advertised byte size, SHA-256 | 2 MiB code/config file; 5 MiB declared asset |
+| `https://accounts.spotify.com/authorize` | Start the optional Karaoke Lyrics Spotify PKCE connection | System browser, Authorization Code with PKCE, random state/verifier, no scopes, loopback IP callback | User-initiated only |
+| `https://accounts.spotify.com/api/token` | Exchange or refresh the optional Spotify token | Exact HTTPS host/path, no redirects or proxies, strict form request and JSON response | 64 KiB response |
+| `https://api.spotify.com/v1/search` | Resolve validated Amazon track metadata to one unambiguous Spotify track | Exact HTTPS host/path, in-memory bearer token, strict metadata and duration checks | 2 MiB response |
+| `https://api.spicylyrics.org/query` | Request optional word or syllable lyrics | Exact HTTPS host/path, no redirects or proxies, `X-mode: 2`, bounded retries and response; receives the no-scope Spotify bearer token | 2 MiB response |
 
 Catalog and plugin requests allow at most three redirects. Every hop and the
 final URL must satisfy the same HTTPS, host, repository, commit, and path policy.
@@ -81,6 +85,13 @@ Application update status, checks, and install starts are native-binding-only
 commands. They are not exposed by the localhost HTTP bridge or the plugin bridge
 capability. Installer launch additionally requires a trusted user click in the
 injected Settings interface.
+
+Karaoke Lyrics provider commands are also native-binding-only and are exposed
+only to the stock `amazify.karaoke-lyrics` plugin. Provider loads run on a
+bounded native executor and carry cancelable request keys. Access tokens stay in
+native memory; refresh tokens are encrypted with Windows DPAPI under
+`%APPDATA%\Amazify`. Tokens, OAuth codes, states, and PKCE verifiers are never
+written to the lyrics cache or logs.
 
 ## Plugin Network Activity
 

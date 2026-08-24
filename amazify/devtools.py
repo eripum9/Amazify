@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -185,6 +186,9 @@ class DevToolsClient:
         self._message_id = 0
         self._ws: Any | None = None
         self._event_handlers: dict[str, Callable[[dict[str, Any]], None]] = {}
+        self._send_lock = threading.RLock()
+        self._close_callbacks: list[Callable[[], None]] = []
+        self._closed = False
 
     def connect(self) -> None:
         expected_port = self.target.devtools_port or _websocket_port(
@@ -225,23 +229,45 @@ class DevToolsClient:
                 raise DevToolsError(str(exc)) from exc
             raise
         self._ws = socket
+        self._closed = False
 
     def close(self) -> None:
-        if self._ws is not None:
-            self._ws.close()
+        callbacks: list[Callable[[], None]] = []
+        with self._send_lock:
+            if not self._closed:
+                self._closed = True
+                callbacks = list(self._close_callbacks)
+                self._close_callbacks.clear()
+            socket = self._ws
             self._ws = None
+        for callback in callbacks:
+            try:
+                callback()
+            except Exception:
+                LOG.debug("DevTools close callback failed", exc_info=True)
+        if socket is not None:
+            socket.close()
+
+    def on_close(self, callback: Callable[[], None]) -> None:
+        with self._send_lock:
+            if self._closed:
+                callback()
+                return
+            self._close_callbacks.append(callback)
+
+    def _send(self, method: str, params: dict[str, Any]) -> int:
+        with self._send_lock:
+            if self._ws is None:
+                raise DevToolsError("DevTools WebSocket is not connected")
+            self._message_id += 1
+            message_id = self._message_id
+            self._ws.send(
+                json.dumps({"id": message_id, "method": method, "params": params})
+            )
+            return message_id
 
     def call(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        if self._ws is None:
-            raise DevToolsError("DevTools WebSocket is not connected")
-        self._message_id += 1
-        message_id = self._message_id
-        payload = {
-            "id": message_id,
-            "method": method,
-            "params": params or {},
-        }
-        self._ws.send(json.dumps(payload))
+        message_id = self._send(method, params or {})
         while True:
             data = self._recv_message()
             if data.get("id") != message_id:
@@ -258,21 +284,15 @@ class DevToolsClient:
         await_promise: bool = True,
         return_by_value: bool = True,
     ) -> Any:
-        if self._ws is None:
-            raise DevToolsError("DevTools WebSocket is not connected")
-        self._message_id += 1
-        message_id = self._message_id
-        payload = {
-            "id": message_id,
-            "method": "Runtime.evaluate",
-            "params": {
+        message_id = self._send(
+            "Runtime.evaluate",
+            {
                 "expression": expression,
                 "awaitPromise": await_promise,
                 "returnByValue": return_by_value,
                 "userGesture": True,
             },
-        }
-        self._ws.send(json.dumps(payload))
+        )
         while True:
             data = self._recv_message()
             if data.get("id") != message_id:
@@ -300,25 +320,15 @@ class DevToolsClient:
         return_by_value: bool = True,
     ) -> int:
         """Send an evaluation without recursively reading from the DevTools socket."""
-        if self._ws is None:
-            raise DevToolsError("DevTools WebSocket is not connected")
-        self._message_id += 1
-        message_id = self._message_id
-        self._ws.send(
-            json.dumps(
-                {
-                    "id": message_id,
-                    "method": "Runtime.evaluate",
-                    "params": {
-                        "expression": expression,
-                        "awaitPromise": await_promise,
-                        "returnByValue": return_by_value,
-                        "userGesture": True,
-                    },
-                }
-            )
+        return self._send(
+            "Runtime.evaluate",
+            {
+                "expression": expression,
+                "awaitPromise": await_promise,
+                "returnByValue": return_by_value,
+                "userGesture": True,
+            },
         )
-        return message_id
 
     def on_event(self, method: str, handler: Callable[[dict[str, Any]], None]) -> None:
         self._event_handlers[method] = handler

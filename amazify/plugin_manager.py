@@ -18,6 +18,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, unquote, urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from . import __version__
+
 PLUGIN_ID_SYNTAX_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,127}$")
 WINDOWS_RESERVED_PLUGIN_ID_COMPONENTS = {
     "con",
@@ -52,6 +54,7 @@ PERMISSIONS = {
     "bridge-state",
     "bridge-command",
     "network",
+    "lyrics-provider",
 }
 REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 
@@ -123,6 +126,10 @@ class PluginManifest:
         if unknown_permissions:
             raise PluginError(
                 f"Plugin {plugin_id} uses unknown permissions: {unknown_permissions}"
+            )
+        if "lyrics-provider" in permissions and plugin_id != "amazify.karaoke-lyrics":
+            raise PluginError(
+                "The lyrics-provider permission is reserved for Amazify Karaoke Lyrics"
             )
 
         styles = data.get("styles", [])
@@ -360,6 +367,11 @@ class PluginManager:
             )
             if not catalog_item:
                 raise PluginError(f"Plugin not found in catalog: {plugin_id}")
+            if catalog_item.get("compatible") is False:
+                required = catalog_item.get("minimumAmazifyVersion", "")
+                raise PluginError(
+                    f"Plugin {plugin_id} requires Amazify {required} or newer"
+                )
 
             target = self.plugin_dir / plugin_id
             self._assert_plugin_child_path(target)
@@ -643,6 +655,13 @@ class PluginManager:
                 f"Catalog plugin {manifest.id} sourceCommit must be an immutable 40-character lowercase commit"
             )
         plugin_root = self._normalize_relative_path(_required_str(item, "pluginRoot"))
+        minimum_amazify_version = str(item.get("minimumAmazifyVersion", "")).strip()
+        if minimum_amazify_version and not re.fullmatch(
+            r"\d+\.\d+\.\d+", minimum_amazify_version
+        ):
+            raise PluginError(
+                f"Catalog plugin {manifest.id} has invalid minimumAmazifyVersion"
+            )
 
         files = item.get("files")
         if not isinstance(files, list) or not files:
@@ -714,6 +733,9 @@ class PluginManager:
             "sourceUrl": source_url,
             "manifest": manifest.to_public_dict(),
             "files": normalized_files,
+            "minimumAmazifyVersion": minimum_amazify_version,
+            "compatible": not minimum_amazify_version
+            or compare_versions(__version__, minimum_amazify_version) >= 0,
             "verification": {
                 "required": True,
                 "method": "sha256",

@@ -1,0 +1,15 @@
+{
+  "id": "amazify.karaoke-lyrics",
+  "name": "Karaoke Lyrics",
+  "version": "0.1.0",
+  "author": "Amazify",
+  "type": "ui",
+  "description": "Adds smooth line, word, and syllable-synced lyrics to Amazon Music's native lyrics view.",
+  "entry": "plugin.js",
+  "styles": ["base.css", "normal.css"],
+  "permissions": ["dom-read", "dom-write", "dom-style", "lyrics-provider"],
+  "amazonMusic": {
+    "testedAppVersions": [],
+    "target": "desktop"
+  }
+}

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from amazify.plugin_manager import PluginError, PluginManager
+from amazify.plugin_manager import PluginError, PluginManager, PluginManifest
 
 ROOT = Path(__file__).resolve().parent.parent
 COMMIT = "1" * 40
@@ -111,6 +111,16 @@ class FakeRedirectResponse:
 
 
 class PluginManagerTests(unittest.TestCase):
+    def test_lyrics_provider_permission_is_reserved(self) -> None:
+        manifest = demo_manifest(plugin_id="community.lyrics")
+        manifest["permissions"].append("lyrics-provider")
+        with self.assertRaisesRegex(PluginError, "reserved"):
+            PluginManifest.from_dict(manifest)
+
+        manifest["id"] = "amazify.karaoke-lyrics"
+        parsed = PluginManifest.from_dict(manifest)
+        self.assertIn("lyrics-provider", parsed.permissions)
+
     def test_cached_catalog_payload_never_fetches_network(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -145,7 +155,11 @@ class PluginManagerTests(unittest.TestCase):
             catalog = manager.catalog_plugins()
             self.assertEqual(
                 {plugin["id"] for plugin in catalog},
-                {"amazify.true-big-mode", "amazify.theme.signal-studio"},
+                {
+                    "amazify.karaoke-lyrics",
+                    "amazify.true-big-mode",
+                    "amazify.theme.signal-studio",
+                },
             )
             self.assertTrue(
                 all(plugin["verification"]["required"] for plugin in catalog)
@@ -166,13 +180,24 @@ class PluginManagerTests(unittest.TestCase):
 
             self.assertEqual(
                 set(copied),
-                {"amazify.true-big-mode", "amazify.theme.signal-studio"},
+                {
+                    "amazify.karaoke-lyrics",
+                    "amazify.true-big-mode",
+                    "amazify.theme.signal-studio",
+                },
             )
             self.assertTrue(all(not package.enabled for package in packages))
             self.assertTrue(all(package.security["verified"] for package in packages))
             self.assertTrue(all(not plugin["enabled"] for plugin in snapshot))
             self.assertTrue(all(plugin["source"]["entry"] for plugin in snapshot))
             self.assertTrue(all(plugin["source"]["styles"] for plugin in snapshot))
+            karaoke = next(
+                plugin
+                for plugin in snapshot
+                if plugin["manifest"]["id"] == "amazify.karaoke-lyrics"
+            )
+            self.assertIn("lyrics-provider", karaoke["manifest"]["permissions"])
+            self.assertIn("const Karaoke", karaoke["source"]["entry"])
 
     def test_install_is_verified_atomic_and_disabled_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

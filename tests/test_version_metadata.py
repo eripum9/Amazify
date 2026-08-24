@@ -10,7 +10,7 @@ from amazify import __version__
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "1.0.0"
+EXPECTED_VERSION = "1.1.0"
 
 
 def matched_version(path: Path, pattern: str) -> str:

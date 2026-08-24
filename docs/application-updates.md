@@ -1,6 +1,6 @@
 # Application Updates
 
-Amazify 1.0.0 includes an application updater for final GitHub releases. It is
+Amazify 1.1.0 includes an application updater for final GitHub releases. It is
 separate from the plugin marketplace updater.
 
 ## User Flow

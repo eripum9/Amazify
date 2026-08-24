@@ -538,67 +538,26 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
   border-radius: 999px !important;
 }
 
-body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-lyric-line {
-  display: block !important;
-  box-sizing: border-box !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  color: rgba(255, 255, 255, 0.33) !important;
-  font-family: "Amazon Ember", "Inter", "Segoe UI", Arial, sans-serif !important;
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-karaoke-host[data-presentation="true-big-mode"] {
+  height: 100% !important;
+  inset: 0 !important;
+  max-width: var(--amazify-true-big-mode-lyrics-width) !important;
+  min-width: 0 !important;
+  position: absolute !important;
+  width: var(--amazify-true-big-mode-lyrics-width) !important;
+  z-index: 2 !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-karaoke-host[data-presentation="true-big-mode"] .amazify-karaoke-scroller {
+  padding-left: clamp(26px, 3vw, 72px) !important;
+  padding-right: calc(var(--amazify-true-big-mode-scrollbar-offset) + 18px) !important;
+}
+
+body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-karaoke-host[data-presentation="true-big-mode"] .amazify-karaoke-line {
   font-size: clamp(28px, 1.8vw, 48px) !important;
   font-weight: 900 !important;
   line-height: 1.28 !important;
-  letter-spacing: 0 !important;
-  margin: 0.34em 0 !important;
-  opacity: 0.58 !important;
-  overflow-wrap: break-word !important;
-  white-space: normal !important;
-  word-break: normal !important;
   text-align: right !important;
-  text-shadow: 0 2px 22px rgba(0, 0, 0, 0.24) !important;
-  transform: none !important;
-  transition: color 180ms ease, opacity 180ms ease, filter 180ms ease !important;
-}
-
-body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-lyric-active {
-  color: rgba(255, 255, 255, 0.98) !important;
-  opacity: 1 !important;
-  filter: none !important;
-  transform: none !important;
-}
-
-body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-letter,
-body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-word {
-  display: inline !important;
-  font: inherit !important;
-  letter-spacing: inherit !important;
-  line-height: inherit !important;
-  color: rgba(255, 255, 255, 0.36) !important;
-  opacity: 0.48 !important;
-  transform: none !important;
-  transition: color 140ms ease, opacity 140ms ease !important;
-}
-
-body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-lyric-active .amazify-true-big-mode-letter {
-  animation: amazify-true-big-mode-letter-reveal 620ms ease forwards !important;
-  animation-delay: calc(var(--amazify-letter-index) * 24ms) !important;
-}
-
-body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-word-active {
-  color: rgba(255, 255, 255, 1) !important;
-  opacity: 1 !important;
-  animation: amazify-true-big-mode-letter-reveal 180ms ease forwards !important;
-}
-
-@keyframes amazify-true-big-mode-letter-reveal {
-  0% {
-    color: rgba(255, 255, 255, 0.38);
-    opacity: 0.54;
-  }
-  100% {
-    color: rgba(255, 255, 255, 1);
-    opacity: 1;
-  }
 }
 
 @media (max-width: 980px) {
@@ -630,7 +589,7 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
     padding-bottom: 26px !important;
   }
 
-  body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-true-big-mode-lyric-line {
+  body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .amazify-karaoke-host[data-presentation="true-big-mode"] .amazify-karaoke-line {
     font-size: clamp(22px, 1.55vw, 36px) !important;
     line-height: 1.2 !important;
   }

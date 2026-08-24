@@ -1,0 +1,19 @@
+.nowPlayingView.x4 .lyricsWrapper.amazify-karaoke-enhanced > ul.lyricsScroller {
+  visibility: hidden !important;
+}
+
+.nowPlayingView.x4 .lyricsWrapper > .amazify-karaoke-host[data-presentation="normal"] {
+  inset: 0;
+  position: absolute;
+  z-index: 2;
+}
+
+.nowPlayingView.x4 .lyricsWrapper {
+  min-height: 0;
+  position: relative;
+}
+
+.nowPlayingView.x4 .lyricsWrapper > .amazify-karaoke-host[data-presentation="normal"] .amazify-karaoke-scroller {
+  padding-left: clamp(24px, 4vw, 72px);
+  padding-right: clamp(28px, 4vw, 76px);
+}

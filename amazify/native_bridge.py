@@ -5,15 +5,19 @@ import json
 import logging
 import secrets
 import threading
+from concurrent.futures import Future, ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 
 from .app_updater import ApplicationUpdater, UpdateError
 from .devtools import DevToolsClient, DevToolsError
+from .lyrics_provider import LyricsProviderError, LyricsProviderService
 from .plugin_manager import PluginError, PluginManager
 
 LOG = logging.getLogger(__name__)
 BINDING_NAME = "AmazifyNativeCommand"
 MAX_NATIVE_REQUEST_BYTES = 16 * 1024
+MAX_NATIVE_RESPONSE_BYTES = 4 * 1024 * 1024
 ALLOWED_COMMANDS = frozenset(
     {
         "state.get",
@@ -25,6 +29,12 @@ ALLOWED_COMMANDS = frozenset(
         "app.update.status",
         "app.update.check",
         "app.update.install",
+        "lyrics.provider.status",
+        "lyrics.provider.beginAuth",
+        "lyrics.provider.disconnect",
+        "lyrics.provider.load",
+        "lyrics.provider.cancel",
+        "lyrics.provider.clearCache",
     }
 )
 
@@ -35,13 +45,21 @@ class NativeBindingBridge:
         client: DevToolsClient,
         plugin_manager: PluginManager,
         app_updater: ApplicationUpdater | None = None,
+        lyrics_provider: LyricsProviderService | None = None,
+        lyrics_state_dir: Path | None = None,
     ) -> None:
         self.client = client
         self.plugin_manager = plugin_manager
         self.app_updater = app_updater
+        self.lyrics_provider = lyrics_provider or (
+            LyricsProviderService(lyrics_state_dir) if lyrics_state_dir is not None else None
+        )
         self._session_nonce = secrets.token_urlsafe(32)
         self._response_callback_name = f"__amazifyNativeResult_{secrets.token_hex(18)}"
         self._operation_lock = threading.RLock()
+        self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="AmazifyLyrics")
+        self._futures: set[Future[dict[str, Any]]] = set()
+        self._closed = False
 
     @property
     def session_nonce(self) -> str:
@@ -60,6 +78,8 @@ class NativeBindingBridge:
                 raise
             LOG.debug("DevTools binding already exists: %s", BINDING_NAME)
         self.client.on_event("Runtime.bindingCalled", self.handle_binding_called)
+        if hasattr(self.client, "on_close"):
+            self.client.on_close(self.close)
         LOG.info("Installed DevTools native binding: %s", BINDING_NAME)
 
     def handle_binding_called(self, params: dict[str, Any]) -> None:
@@ -83,9 +103,12 @@ class NativeBindingBridge:
             command_payload = payload.get("payload", {})
             if not isinstance(command_payload, dict):
                 raise TypeError("Native command payload must be an object")
+            if name == "lyrics.provider.load":
+                self._submit_provider_load(request_id, command_payload)
+                return
             with self._operation_lock:
                 result = self._handle_command(name, command_payload)
-        except (PluginError, UpdateError, TypeError, ValueError) as exc:
+        except (LyricsProviderError, PluginError, UpdateError, TypeError, ValueError) as exc:
             LOG.warning("Rejected native binding command: %s", exc)
             result = {"ok": False, "error": str(exc)}
         except Exception:
@@ -123,6 +146,19 @@ class NativeBindingBridge:
             if self.app_updater is None:
                 raise UpdateError("The Amazify application updater is unavailable")
             return {"ok": True, "appUpdate": self.app_updater.start_install()}
+        if name.startswith("lyrics.provider."):
+            if self.lyrics_provider is None:
+                raise LyricsProviderError("Lyrics provider is unavailable")
+            if name == "lyrics.provider.status":
+                return self.lyrics_provider.status()
+            if name == "lyrics.provider.beginAuth":
+                return self.lyrics_provider.begin_auth()
+            if name == "lyrics.provider.disconnect":
+                return self.lyrics_provider.disconnect()
+            if name == "lyrics.provider.cancel":
+                return self.lyrics_provider.cancel(str(payload.get("requestKey", "")))
+            if name == "lyrics.provider.clearCache":
+                return self.lyrics_provider.clear_cache()
         raise PluginError(f"Native command not allowed: {name}")
 
     def _state_payload(self, *, force_catalog_refresh: bool = False) -> dict[str, Any]:
@@ -150,14 +186,61 @@ class NativeBindingBridge:
         return {"ok": True, "appUpdate": self.app_updater.snapshot()}
 
     def _reply(self, request_id: str, result: dict[str, Any]) -> None:
+        if self._closed:
+            return
+        serialized = json.dumps(result)
+        if len(serialized.encode("utf-8")) > MAX_NATIVE_RESPONSE_BYTES:
+            serialized = json.dumps({"ok": False, "error": "Native response was too large"})
         expression = (
             "(() => {"
             f" const callback = window[{json.dumps(self._response_callback_name)}];"
             " if (typeof callback !== 'function') return false;"
-            f" return callback({json.dumps(request_id)}, {json.dumps(result)});"
+            f" return callback({json.dumps(request_id)}, {serialized});"
             "})()"
         )
         try:
             self.client.evaluate_nowait(expression)
         except DevToolsError:
             LOG.debug("Failed to deliver native bridge response", exc_info=True)
+
+    def _submit_provider_load(self, request_id: str, payload: dict[str, Any]) -> None:
+        if not request_id:
+            raise LyricsProviderError("Lyrics request id is missing")
+        if self.lyrics_provider is None:
+            raise LyricsProviderError("Lyrics provider is unavailable")
+        if self._closed:
+            raise LyricsProviderError("Native bridge is closed")
+        track = payload.get("track", {})
+        if not isinstance(track, dict):
+            raise TypeError("Lyrics track payload must be an object")
+        request_key = str(payload.get("requestKey", ""))
+        future = self._executor.submit(self.lyrics_provider.load, track, request_key)
+        self._futures.add(future)
+
+        def complete(done: Future[dict[str, Any]]) -> None:
+            self._futures.discard(done)
+            if self._closed:
+                return
+            if done.cancelled():
+                return
+            try:
+                result = done.result()
+            except (LyricsProviderError, TypeError, ValueError) as exc:
+                result = {"ok": False, "error": str(exc)}
+            except Exception:
+                LOG.exception("Asynchronous lyrics provider command failed")
+                result = {"ok": False, "error": "Lyrics provider failed"}
+            self._reply(request_id, result)
+
+        future.add_done_callback(complete)
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        futures = list(self._futures)
+        for future in futures:
+            future.cancel()
+        if self.lyrics_provider is not None:
+            self.lyrics_provider.close()
+        self._executor.shutdown(wait=False, cancel_futures=True)

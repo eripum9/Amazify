@@ -20,12 +20,12 @@ VSVersionInfo(
               "FileDescription",
               "Amazon Music runtime customization companion",
             ),
-            StringStruct("FileVersion", "1.0.0.0"),
+            StringStruct("FileVersion", "1.1.0.0"),
             StringStruct("InternalName", "Amazify"),
             StringStruct("LegalCopyright", "Copyright (c) Amazify contributors"),
             StringStruct("OriginalFilename", "amazify.exe"),
             StringStruct("ProductName", "Amazify"),
-            StringStruct("ProductVersion", "1.0.0"),
+            StringStruct("ProductVersion", "1.1.0"),
           ],
         )
       ]

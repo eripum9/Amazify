@@ -15,6 +15,7 @@ plugins without the required capability from gaining Amazify authority.
 - The user's authenticated Amazon Music renderer and data visible in its DOM.
 - Playback integrity and actions performed through Amazon Music controls.
 - Ephemeral bridge tokens, native-binding nonces, and DevTools session details.
+- Optional Spotify access/refresh tokens and OAuth PKCE state used by Karaoke Lyrics.
 - Installed plugin source, enabled state, catalog cache, settings, and logs.
 - The integrity and provenance of official catalog entries and candidate artifacts.
 - The integrity and provenance of application update metadata and installers.
@@ -82,6 +83,28 @@ Community plugins install disabled and require explicit enablement. Any changed
 package identity, including a new commit, file inventory, manifest, or permission
 set, is installed disabled and must be enabled again.
 
+The runtime capability registry is owner-scoped and lifecycle-scoped. Capability
+names must be provider-namespaced, consumers pin the expected provider and major
+version, and provider APIs are frozen and revoked on unmount. This limits
+accidental substitution and stale access; it does not sandbox mutually malicious
+code because all enabled plugins still share the Amazon renderer.
+
+### Lyrics Provider Boundary
+
+Only `amazify.karaoke-lyrics` may declare `lyrics-provider`. Spotify OAuth and
+provider traffic execute in the native companion, not plugin JavaScript. OAuth
+uses Authorization Code with PKCE, a random loopback callback port and state,
+no client secret, and no scopes. Access tokens remain in memory and refresh
+tokens use Windows DPAPI. The broker accepts only exact Spotify auth/token/search
+and Spicy Lyrics query paths, rejects redirects, bounds bodies and timeouts, and
+discards canceled or stale requests before replying to the renderer.
+
+Spicy Lyrics receives the no-scope Spotify bearer token as required by its web
+authentication protocol. It is an external service and therefore a distinct
+trust boundary. Users who do not connect Spotify, are not allowlisted by a
+development-mode Spotify app, or encounter a provider failure retain Amazon's
+line-synchronized lyrics fallback.
+
 ### Catalog And Download Boundary
 
 The catalog is an update index, not executable authority by itself. Each package
@@ -142,6 +165,9 @@ attested and uploaded to the workflow run; no release is created.
 | Workflow input executes shell code | Put expression values in step `env`; validate format before use; never interpolate inputs into `run` blocks |
 | Candidate is mistaken for an official release | Candidate naming and documentation, no release API commands, no `contents: write` |
 | Sensitive data appears in diagnostics or artifacts | Do not log session credentials; redact paths/tokens; keep evidence to versions, hashes, and check results |
+| A lyrics plugin steals native Spotify authority | Reserve `lyrics-provider` for the exact stock plugin ID, expose frozen narrow methods, keep tokens native-only, revoke on unmount |
+| Stale provider work replaces the current song | Track generations and request keys, cancel prior work, reject late track keys, stop executor replies after bridge close |
+| Provider redirects or returns oversized/malformed content | Exact HTTPS host/path allowlist, no redirects/proxies, strict content type and JSON, short timeouts and byte limits |
 
 ## Residual Risks
 
@@ -153,5 +179,7 @@ attested and uploaded to the workflow run; no release is created.
 - Unsigned executables do not provide Authenticode publisher identity and may trigger SmartScreen.
 - The updater's release identity ultimately depends on the security of the official GitHub repository and maintainer account.
 - Amazon Music DOM and launch behavior are unsupported upstream interfaces and may break safely or unexpectedly.
+- The shared Karaoke Lyrics renderer and capability consumers remain a renderer-level trust boundary.
+- Spicy Lyrics is an undocumented third-party service and may change, rate-limit, or reject compatibility requests.
 
 Sensitive findings should be reported as described in [`SECURITY.md`](../SECURITY.md).

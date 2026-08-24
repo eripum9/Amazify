@@ -207,6 +207,21 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("Plugin bridge command is not allowed", script)
         self.assertIn("official GitHub release installer", script)
 
+    def test_owner_scoped_capabilities_settings_and_lyrics_provider_are_private(self) -> None:
+        script = build_runtime_script(
+            bridge_url="http://127.0.0.1:12345",
+            bridge_token="token",
+            plugins=[],
+        )
+
+        self.assertIn("provideCapabilityForPlugin", script)
+        self.assertIn("Capability names must be namespaced", script)
+        self.assertIn("cleanupPluginRegistrations(pluginId)", script)
+        self.assertIn("addSettingsSectionForPlugin", script)
+        self.assertIn('pluginId === "amazify.karaoke-lyrics"', script)
+        self.assertIn('nativeCommand("lyrics.provider.load"', script)
+        self.assertIn("30000", script)
+
     def test_cleanup_script_removes_injected_markers(self) -> None:
         script = build_cleanup_script()
 

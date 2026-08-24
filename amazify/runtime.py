@@ -154,6 +154,10 @@ def build_runtime_script(
     actionHost: null,
     observer: null,
     mountedPlugins: new NATIVE_MAP(),
+    capabilityProviders: new NATIVE_MAP(),
+    capabilitySubscribers: new NATIVE_MAP(),
+    settingsSections: new NATIVE_MAP(),
+    settingsRenderCleanups: new NATIVE_MAP(),
     nativeRequests: new NATIVE_MAP(),
     nativeSequence: 0,
     lastError: "",
@@ -849,11 +853,13 @@ def build_runtime_script(
 
   function closePanel() {{
     state.activePanel = null;
+    cleanupRenderedSettingsSections();
     const existingPanel = document.querySelector(PANEL_SELECTOR);
     if (existingPanel) existingPanel.remove();
   }}
 
   function renderPanel() {{
+    cleanupRenderedSettingsSections();
     const panel = ensurePanel();
     const active = state.activePanel || "marketplace";
     panel.innerHTML = `
@@ -916,6 +922,50 @@ def build_runtime_script(
         await installPlugin(button.dataset.amazifyInstallPlugin);
       }});
     }});
+    if (active === "settings") {{
+      renderPluginSettingsSections(panel);
+    }}
+  }}
+
+  function cleanupRenderedSettingsSections(pluginId = "") {{
+    const keys = mapKeysSnapshot(state.settingsRenderCleanups);
+    for (let index = 0; index < keys.length; index += 1) {{
+      const key = keys[index];
+      if (pluginId && !key.startsWith(`${{pluginId}}:`)) continue;
+      const cleanup = NATIVE_MAP_GET(state.settingsRenderCleanups, key);
+      NATIVE_MAP_DELETE(state.settingsRenderCleanups, key);
+      if (typeof cleanup === "function") {{
+        try {{ cleanup(); }} catch (error) {{
+          console.warn("[Amazify] Plugin settings cleanup failed", key, error);
+        }}
+      }}
+    }}
+  }}
+
+  function renderPluginSettingsSections(panel) {{
+    const body = panel ? panel.querySelector(".amazify-panel-body") : null;
+    if (!body) return;
+    const sections = mapValuesSnapshot(state.settingsSections);
+    for (let index = 0; index < sections.length; index += 1) {{
+      const section = sections[index];
+      const wrapper = document.createElement("section");
+      wrapper.className = "amazify-plugin-settings-section";
+      wrapper.dataset.amazifyPluginId = section.pluginId;
+      wrapper.innerHTML = `<div class="amazify-section-title">${{esc(section.title)}}</div>`;
+      const host = document.createElement("div");
+      host.className = "amazify-plugin-settings-host";
+      wrapper.appendChild(host);
+      body.appendChild(wrapper);
+      try {{
+        const cleanup = section.render(host);
+        if (typeof cleanup === "function") {{
+          NATIVE_MAP_SET(state.settingsRenderCleanups, section.key, cleanup);
+        }}
+      }} catch (error) {{
+        host.textContent = `Unable to render ${{section.title}} settings.`;
+        console.warn("[Amazify] Plugin settings render failed", section.pluginId, error);
+      }}
+    }}
   }}
 
   function renderMarketplace() {{
@@ -983,13 +1033,17 @@ def build_runtime_script(
       ["catalog-sha256", "bundled"].includes(String(installedSecurity.method || "")) &&
       installedSecurity.verified !== true
     );
+    const incompatible = Boolean(catalog && catalog.compatible === false);
+    const compatibilityDetail = incompatible
+      ? ` - requires Amazify ${{esc(catalog.minimumAmazifyVersion || "newer")}}`
+      : "";
     const trustDetail = channel === "community"
       ? "Third-party community code - review its source and permissions before enabling"
       : channel === "stock"
         ? "Amazify stock plugin with pinned source and SHA-256 verification"
         : "Local plugin - source integrity is managed by you";
     const downloadButton = catalog
-      ? `<button class="amazify-primary" type="button" data-amazify-install-plugin="${{esc(manifest.id)}}">${{isInstalled ? (catalog.updateAvailable ? "Update" : "Reinstall") : "Download"}}</button>`
+      ? `<button class="amazify-primary" type="button" data-amazify-install-plugin="${{esc(manifest.id)}}" ${{incompatible ? "disabled" : ""}}>${{isInstalled ? (catalog.updateAvailable ? "Update" : "Reinstall") : "Download"}}</button>`
       : "";
     const toggleButton = isInstalled
       ? `<button class="amazify-toggle" type="button" aria-label="Toggle ${{esc(manifest.name)}}" aria-pressed="${{installed.enabled ? "true" : "false"}}" data-amazify-toggle-plugin="${{esc(manifest.id)}}" ${{integrityFailed ? "disabled" : ""}}></button>`
@@ -1004,7 +1058,7 @@ def build_runtime_script(
           <div class="amazify-plugin-controls">${{downloadButton}}${{toggleButton}}</div>
         </div>
         <div class="amazify-plugin-desc">${{esc(manifest.description)}}</div>
-        <div class="amazify-plugin-meta">${{esc(trustDetail)}}${{sourceCommit ? ` - source ${{esc(sourceCommit.slice(0, 12))}}` : ""}}${{installedVerified ? " - installed files verified" : (!isInstalled && verificationRequired ? " - SHA-256 verification required" : "")}}${{integrityFailed ? " - integrity check failed; execution blocked" : ""}}</div>
+        <div class="amazify-plugin-meta">${{esc(trustDetail)}}${{sourceCommit ? ` - source ${{esc(sourceCommit.slice(0, 12))}}` : ""}}${{installedVerified ? " - installed files verified" : (!isInstalled && verificationRequired ? " - SHA-256 verification required" : "")}}${{integrityFailed ? " - integrity check failed; execution blocked" : ""}}${{compatibilityDetail}}</div>
         <div class="amazify-permissions">${{permissions || '<span class="amazify-permission">no special permissions</span>'}}</div>
       </div>
     `;
@@ -1128,7 +1182,7 @@ def build_runtime_script(
     return data;
   }}
 
-  function nativeCommand(name, payload = {{}}) {{
+  function nativeCommand(name, payload = {{}}, timeoutMs = 5000) {{
     return new NATIVE_PROMISE((resolve, reject) => {{
       if (!NATIVE_COMMAND || !NATIVE_SESSION_NONCE || !NATIVE_RESPONSE_CALLBACK) {{
         reject(new Error("Local bridge unavailable"));
@@ -1138,7 +1192,7 @@ def build_runtime_script(
       const timeout = NATIVE_SET_TIMEOUT(() => {{
         NATIVE_MAP_DELETE(state.nativeRequests, id);
         reject(new Error("Native bridge timed out"));
-      }}, 5000);
+      }}, Math.max(1000, Math.min(30000, Number(timeoutMs) || 5000)));
       NATIVE_MAP_SET(state.nativeRequests, id, {{ resolve, reject, timeout }});
       NATIVE_COMMAND(NATIVE_JSON_STRINGIFY({{
         id,
@@ -1568,6 +1622,145 @@ def build_runtime_script(
     return action;
   }}
 
+  function addSettingsSectionForPlugin(pluginId, descriptor) {{
+    if (!descriptor || typeof descriptor !== "object") {{
+      throw new TypeError("Plugin settings section must be an object");
+    }}
+    const sectionId = NATIVE_STRING(descriptor.id || "").trim();
+    const title = NATIVE_STRING(descriptor.title || "").trim();
+    if (!/^[a-z0-9][a-z0-9._-]{{1,63}}$/.test(sectionId)) {{
+      throw new Error("Plugin settings section id is invalid");
+    }}
+    if (!title || typeof descriptor.render !== "function") {{
+      throw new Error("Plugin settings section requires a title and render function");
+    }}
+    const key = `${{pluginId}}:${{sectionId}}`;
+    if (NATIVE_MAP_HAS(state.settingsSections, key)) {{
+      throw new Error("Plugin settings section is already registered");
+    }}
+    const record = {{ key, pluginId, title, render: descriptor.render }};
+    NATIVE_MAP_SET(state.settingsSections, key, record);
+    if (state.activePanel === "settings") renderPanel();
+    let active = true;
+    return () => {{
+      if (!active) return;
+      active = false;
+      cleanupRenderedSettingsSections(pluginId);
+      NATIVE_MAP_DELETE(state.settingsSections, key);
+      if (state.activePanel === "settings") renderPanel();
+    }};
+  }}
+
+  function capabilityMajor(version) {{
+    const match = /^(\\d+)(?:\\.|$)/.exec(NATIVE_STRING(version || ""));
+    return match ? Number(match[1]) : -1;
+  }}
+
+  function capabilityForRequest(request) {{
+    if (!request || typeof request !== "object") return null;
+    const name = NATIVE_STRING(request.name || "");
+    const providerId = NATIVE_STRING(request.providerId || "");
+    const requiredMajor = Number(request.major);
+    const record = NATIVE_MAP_GET(state.capabilityProviders, name);
+    if (
+      !record || !record.active || record.providerId !== providerId ||
+      !Number.isInteger(requiredMajor) || record.major !== requiredMajor
+    ) {{
+      return null;
+    }}
+    return record.facade;
+  }}
+
+  function notifyCapabilitySubscribers(name) {{
+    NATIVE_MAP_FOR_EACH(state.capabilitySubscribers, (records) => {{
+      for (let index = 0; index < records.length; index += 1) {{
+        const record = records[index];
+        if (!record.active || record.request.name !== name) continue;
+        try {{ record.callback(capabilityForRequest(record.request)); }} catch (error) {{
+          console.warn("[Amazify] Capability subscriber failed", record.pluginId, error);
+        }}
+      }}
+    }});
+  }}
+
+  function revokeCapabilityRecord(record) {{
+    if (!record || !record.active) return;
+    record.active = false;
+    if (NATIVE_MAP_GET(state.capabilityProviders, record.name) === record) {{
+      NATIVE_MAP_DELETE(state.capabilityProviders, record.name);
+    }}
+    notifyCapabilitySubscribers(record.name);
+  }}
+
+  function provideCapabilityForPlugin(pluginId, nameValue, definition) {{
+    const name = NATIVE_STRING(nameValue || "");
+    if (!/^[a-z0-9][a-z0-9._-]{{2,191}}$/.test(name) || !name.startsWith(`${{pluginId}}.`)) {{
+      throw new Error("Capability names must be namespaced to the provider plugin");
+    }}
+    if (!definition || typeof definition !== "object" || !definition.api || typeof definition.api !== "object") {{
+      throw new TypeError("Capability definition requires an api object");
+    }}
+    const version = NATIVE_STRING(definition.version || "");
+    const major = capabilityMajor(version);
+    if (major < 0) throw new Error("Capability version is invalid");
+    const existing = NATIVE_MAP_GET(state.capabilityProviders, name);
+    if (existing && existing.active) throw new Error("Capability is already provided");
+
+    const record = {{ name, providerId: pluginId, version, major, active: true, facade: null }};
+    const facade = {{ providerId: pluginId, name, version }};
+    const apiKeys = NATIVE_KEYS(definition.api);
+    for (let index = 0; index < apiKeys.length; index += 1) {{
+      const key = apiKeys[index];
+      const value = definition.api[key];
+      if (typeof value !== "function") continue;
+      facade[key] = (...args) => {{
+        if (!record.active) throw new Error("Capability is unavailable");
+        return value(...args);
+      }};
+    }}
+    record.facade = NATIVE_FREEZE(facade);
+    NATIVE_MAP_SET(state.capabilityProviders, name, record);
+    notifyCapabilitySubscribers(name);
+    return () => revokeCapabilityRecord(record);
+  }}
+
+  function subscribeCapabilityForPlugin(pluginId, request, callback) {{
+    if (!request || typeof request !== "object" || typeof callback !== "function") {{
+      throw new TypeError("Capability subscription requires a request and callback");
+    }}
+    const normalized = NATIVE_FREEZE({{
+      name: NATIVE_STRING(request.name || ""),
+      providerId: NATIVE_STRING(request.providerId || ""),
+      major: Number(request.major)
+    }});
+    if (!normalized.name || !normalized.providerId || !Number.isInteger(normalized.major)) {{
+      throw new Error("Capability subscription is invalid");
+    }}
+    const record = {{ pluginId, request: normalized, callback, active: true }};
+    const records = NATIVE_MAP_GET(state.capabilitySubscribers, pluginId) || [];
+    records[records.length] = record;
+    NATIVE_MAP_SET(state.capabilitySubscribers, pluginId, records);
+    callback(capabilityForRequest(normalized));
+    return () => {{ record.active = false; }};
+  }}
+
+  function cleanupPluginRegistrations(pluginId) {{
+    cleanupRenderedSettingsSections(pluginId);
+    const sectionKeys = mapKeysSnapshot(state.settingsSections);
+    for (let index = 0; index < sectionKeys.length; index += 1) {{
+      const key = sectionKeys[index];
+      const section = NATIVE_MAP_GET(state.settingsSections, key);
+      if (section && section.pluginId === pluginId) NATIVE_MAP_DELETE(state.settingsSections, key);
+    }}
+    const subscriptions = NATIVE_MAP_GET(state.capabilitySubscribers, pluginId) || [];
+    for (let index = 0; index < subscriptions.length; index += 1) subscriptions[index].active = false;
+    NATIVE_MAP_DELETE(state.capabilitySubscribers, pluginId);
+    const capabilities = mapValuesSnapshot(state.capabilityProviders);
+    for (let index = 0; index < capabilities.length; index += 1) {{
+      if (capabilities[index].providerId === pluginId) revokeCapabilityRecord(capabilities[index]);
+    }}
+  }}
+
   function buildPluginApi(plugin) {{
     const manifest = plugin.manifest || {{}};
     const pluginId = NATIVE_STRING(manifest.id || "");
@@ -1580,7 +1773,8 @@ def build_runtime_script(
       openMarketplace: () => openPanel("marketplace"),
       openSettings: () => openPanel("settings"),
       closePanel,
-      addHeaderAction: (...args) => addHeaderActionForPlugin(pluginId, args)
+      addHeaderAction: (...args) => addHeaderActionForPlugin(pluginId, args),
+      addSettingsSection: (descriptor) => addSettingsSectionForPlugin(pluginId, descriptor)
     }});
     const assets = NATIVE_FREEZE({{
       list: (requestedId) => {{
@@ -1599,8 +1793,28 @@ def build_runtime_script(
       version: VERSION,
       permissions: NATIVE_FREEZE(permissionList),
       ui,
-      assets
+      assets,
+      capabilities: NATIVE_FREEZE({{
+        provide: (name, definition) => provideCapabilityForPlugin(pluginId, name, definition),
+        subscribe: (request, callback) => subscribeCapabilityForPlugin(pluginId, request, callback)
+      }})
     }};
+    if (pluginId === "amazify.karaoke-lyrics" && NATIVE_SET_HAS(permissions, "lyrics-provider")) {{
+      const requireActivation = () => {{
+        const activation = window.navigator && window.navigator.userActivation;
+        if (activation && activation.isActive !== true) {{
+          throw new Error("This action requires a user interaction");
+        }}
+      }};
+      api.lyricsProvider = NATIVE_FREEZE({{
+        status: () => nativeCommand("lyrics.provider.status", {{}}, 5000),
+        beginAuth: () => {{ requireActivation(); return nativeCommand("lyrics.provider.beginAuth", {{}}, 5000); }},
+        disconnect: () => {{ requireActivation(); return nativeCommand("lyrics.provider.disconnect", {{}}, 5000); }},
+        load: (track, requestKey) => nativeCommand("lyrics.provider.load", {{ track: clonePlain(track || {{}}), requestKey: NATIVE_STRING(requestKey || "") }}, 30000),
+        cancel: (requestKey) => nativeCommand("lyrics.provider.cancel", {{ requestKey: NATIVE_STRING(requestKey || "") }}, 5000),
+        clearCache: () => {{ requireActivation(); return nativeCommand("lyrics.provider.clearCache", {{}}, 5000); }}
+      }});
+    }}
     if (
       NATIVE_SET_HAS(permissions, "bridge-state") ||
       NATIVE_SET_HAS(permissions, "bridge-command")
@@ -1681,6 +1895,7 @@ def build_runtime_script(
         console.warn("[Amazify] Plugin cleanup failed", pluginId, error);
       }}
     }}
+    cleanupPluginRegistrations(pluginId);
     document.querySelectorAll(`[data-amazify-plugin-id="${{cssEscape(pluginId)}}"], [data-amazify-style-id="${{cssEscape(pluginId)}}"]`).forEach((node) => node.remove());
     NATIVE_MAP_DELETE(state.mountedPlugins, pluginId);
   }}

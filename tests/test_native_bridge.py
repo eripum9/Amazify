@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 import unittest
 from typing import Any, Callable
 
@@ -17,6 +18,7 @@ class FakeDevToolsClient:
         self.calls: list[tuple[str, dict[str, Any] | None]] = []
         self.handlers: dict[str, Callable[[dict[str, Any]], None]] = {}
         self.expressions: list[str] = []
+        self.close_handlers: list[Callable[[], None]] = []
 
     def call(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         self.calls.append((method, params))
@@ -28,6 +30,9 @@ class FakeDevToolsClient:
     def evaluate_nowait(self, expression: str) -> int:
         self.expressions.append(expression)
         return len(self.expressions)
+
+    def on_close(self, handler: Callable[[], None]) -> None:
+        self.close_handlers.append(handler)
 
 
 class StubPluginManager:
@@ -86,6 +91,21 @@ class StubApplicationUpdater:
         self.state["status"] = "downloading"
         return self.snapshot()
 
+
+class StubLyricsProvider:
+    def __init__(self) -> None:
+        self.closed = False
+        self.canceled: list[str] = []
+
+    def load(self, track: dict[str, Any], request_key: str) -> dict[str, Any]:
+        return {"ok": True, "status": "ready", "trackKey": track.get("key")}
+
+    def cancel(self, request_key: str) -> dict[str, Any]:
+        self.canceled.append(request_key)
+        return {"ok": True}
+
+    def close(self) -> None:
+        self.closed = True
 
 class NativeBindingBridgeTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -216,6 +236,12 @@ class NativeBindingBridgeTests(unittest.TestCase):
                 "app.update.status",
                 "app.update.check",
                 "app.update.install",
+                "lyrics.provider.status",
+                "lyrics.provider.beginAuth",
+                "lyrics.provider.disconnect",
+                "lyrics.provider.load",
+                "lyrics.provider.cancel",
+                "lyrics.provider.clearCache",
             },
         )
 
@@ -229,6 +255,29 @@ class NativeBindingBridgeTests(unittest.TestCase):
         self.assertEqual(len(self.client.expressions), 3)
         self.assertIn("checking", self.client.expressions[0])
         self.assertIn("downloading", self.client.expressions[2])
+
+    def test_lyrics_load_replies_asynchronously_and_close_revokes_provider(self) -> None:
+        provider = StubLyricsProvider()
+        bridge = NativeBindingBridge(
+            self.client,  # type: ignore[arg-type]
+            self.manager,  # type: ignore[arg-type]
+            lyrics_provider=provider,  # type: ignore[arg-type]
+        )
+        request = {
+            "id": "lyrics-1",
+            "name": "lyrics.provider.load",
+            "payload": {"track": {"key": "amazon:key"}, "requestKey": "request"},
+            "sessionNonce": bridge.session_nonce,
+        }
+        bridge.handle_binding_called(
+            {"name": BINDING_NAME, "payload": json.dumps(request)}
+        )
+        deadline = time.monotonic() + 2
+        while not self.client.expressions and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertIn("amazon:key", self.client.expressions[0])
+        bridge.close()
+        self.assertTrue(provider.closed)
 
 
 if __name__ == "__main__":

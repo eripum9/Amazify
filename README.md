@@ -40,6 +40,7 @@ Amazify launches or attaches to the official Amazon Music desktop app, validates
 - **Desktop integration** - provides the `Amazon Music (Amazify)` Start Menu shortcut, optional Desktop and taskbar shortcuts, and a real `amazify` CLI command.
 - **Application updates** - checks official final GitHub releases, verifies the installer digest, and asks before opening the normal installer.
 - **Plugin assets** - plugins can package images, SVGs, fonts, and JSON alongside JavaScript and CSS.
+- **Shared plugin capabilities** - lifecycle-scoped, provider-namespaced APIs let reviewed plugins cooperate without exposing native credentials.
 - **Authenticated local bridge** - native operations use an allowlisted, credentialed loopback bridge with a DevTools binding fallback.
 
 ## Install
@@ -61,7 +62,7 @@ Python is not required when using the installer.
 The installer places Amazify under `%LOCALAPPDATA%\Programs\Amazify`, adds the CLI directory to the user `PATH`, and registers a normal uninstaller. Startup at sign-in is selected by default. Taskbar pinning is best-effort because some Windows versions reject programmatic pinning; the Start Menu shortcut can always be pinned manually.
 
 > [!NOTE]
-> The v1.0.0 installer is not Authenticode signed. Windows SmartScreen may therefore show an unrecognized-app warning. The release page publishes the installer SHA-256 for independent verification.
+> The installer is not Authenticode signed. Windows SmartScreen may therefore show an unrecognized-app warning. Release pages publish the installer SHA-256 for independent verification.
 
 ## Use The CLI
 
@@ -94,10 +95,11 @@ Stock plugins are reviewed catalog entries maintained in this repository. Their 
 
 | Plugin | Version | Type | Description |
 |---|---:|---|---|
-| [True Big Mode](sample_plugins/amazify.true-big-mode/) | `0.1.5` | UI | Replaces Big Mode with a full-window lyrics layout, dynamic album-art ambience, custom playback controls, a draggable timeline, and a centered no-lyrics state |
+| [Karaoke Lyrics](sample_plugins/amazify.karaoke-lyrics/) | `0.1.0` | UI | Enhances Amazon's native lyrics view with retained line, word, and syllable timing, click-to-seek, controlled scrolling, and an Amazon line-lyrics fallback |
+| [True Big Mode](sample_plugins/amazify.true-big-mode/) | `0.2.0` | UI | Replaces Big Mode with a full-window layout, dynamic album-art ambience, custom playback controls, a draggable timeline, and a centered no-lyrics state |
 | [Signal Studio](sample_plugins/amazify.theme.signal-studio/) | `0.1.0` | Theme | Reworks the full interface with a compact navigation rail, custom typography and textures, reactive ambience, redesigned panels, and a floating transport |
 
-True Big Mode is inspired by [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics).
+Karaoke Lyrics and True Big Mode are inspired by [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics). Karaoke Lyrics is an independent compatibility implementation and does not copy Spicy Lyrics source.
 
 ### Signal Studio
 
@@ -110,6 +112,8 @@ True Big Mode is inspired by [Spicy Lyrics](https://github.com/Spikerko/spicy-ly
 ![True Big Mode showing synchronized lyrics](docs/assets/true-big-mode.png)
 
 *True Big Mode with album-derived ambience, synchronized lyrics, track details, and the custom timeline.*
+
+Karaoke Lyrics works in Amazon Music's normal lyrics view by itself. When True Big Mode is enabled, the same retained renderer moves into Big Mode without fetching or decoding the song again. Spotify-powered word and syllable lyrics are an opt-in beta; Amazon line lyrics remain available without a Spotify connection.
 
 ## How It Fits Together
 
@@ -158,7 +162,7 @@ A plugin is a directory containing `manifest.json` plus optional JavaScript, CSS
 
 Plugin JavaScript receives `Amazify`, `manifest`, and `source`. Return a cleanup function to undo listeners and runtime changes when the plugin is disabled. Plugin-owned DOM should use `data-amazify-plugin-id`, and every privileged capability should be declared in the manifest.
 
-Declared `dom-read`, `dom-write`, `dom-style`, and `network` permissions are disclosure and consent signals, not a complete JavaScript sandbox. Plugins run in the Amazon Music renderer and can affect what the signed-in user can see and do.
+Declared `dom-read`, `dom-write`, `dom-style`, and `network` permissions are disclosure and consent signals, not a complete JavaScript sandbox. Plugins run in the Amazon Music renderer and can affect what the signed-in user can see and do. The native `lyrics-provider` permission is reserved for the reviewed Karaoke Lyrics stock plugin.
 
 For assets, use `Amazify.assets.url(manifest.id, "logo")` or `source.assetUrl("logo")` from JavaScript. Matching CSS `url(...)` references are rewritten to validated data URLs at runtime.
 

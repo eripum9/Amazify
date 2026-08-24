@@ -100,7 +100,13 @@ jobs:
 
       - name: Build executables and installer
         shell: pwsh
-        run: .\Build.bat
+        env:
+          AMAZIFY_SPOTIFY_CLIENT_ID: ${{ vars.AMAZIFY_SPOTIFY_CLIENT_ID }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:AMAZIFY_SPOTIFY_CLIENT_ID)) {
+            throw 'Repository variable AMAZIFY_SPOTIFY_CLIENT_ID is required for candidate builds.'
+          }
+          .\Build.bat
 
       - name: Smoke packaged executables
         shell: pwsh

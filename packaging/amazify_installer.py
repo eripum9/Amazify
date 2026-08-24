@@ -12,7 +12,7 @@ from amazify.shortcuts import install_amazify_shortcuts, remove_amazify_shortcut
 
 
 APP_NAME = "Amazify"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 EXE_NAME = "amazify.exe"
 WINDOWED_EXE_DIR_NAME = "amazifyw"
 WINDOWED_EXE_NAME = "amazifyw.exe"
