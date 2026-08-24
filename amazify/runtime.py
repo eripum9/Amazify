@@ -76,6 +76,8 @@ def build_runtime_script(
   const NATIVE_CONFIRM = typeof window.confirm === "function" ? window.confirm.bind(window) : () => false;
   const NATIVE_SET_TIMEOUT = window.setTimeout.bind(window);
   const NATIVE_CLEAR_TIMEOUT = window.clearTimeout.bind(window);
+  const NATIVE_REQUEST_ANIMATION_FRAME = window.requestAnimationFrame.bind(window);
+  const NATIVE_CANCEL_ANIMATION_FRAME = window.cancelAnimationFrame.bind(window);
   const NATIVE_DEFINE_PROPERTY = Object.defineProperty.bind(Object);
   const NATIVE_ASSIGN = Object.assign.bind(Object);
   const NATIVE_FREEZE = Object.freeze.bind(Object);
@@ -338,6 +340,11 @@ def build_runtime_script(
     if (!definition) throw new Error(`Unknown setting: ${{settingId}}`);
     const normalized = normalizePluginSettingValue(definition, value);
     if (!normalized.valid) throw new TypeError(`Invalid value for setting: ${{settingId}}`);
+    const existingValues = storedSettingsForPlugin(pluginId, false);
+    if (existingValues && NATIVE_HAS_OWN(existingValues, settingId)) {{
+      const existing = normalizePluginSettingValue(definition, existingValues[settingId]);
+      if (existing.valid && existing.value === normalized.value) return normalized.value;
+    }}
     const values = storedSettingsForPlugin(pluginId, true);
     const hadPrevious = NATIVE_HAS_OWN(values, settingId);
     const previous = values[settingId];
@@ -742,16 +749,214 @@ def build_runtime_script(
       justify-content: flex-end;
       gap: 9px;
     }}
-    .amazify-color-setting input[type="color"] {{
-      width: 38px;
-      height: 32px;
+    .amazify-color-setting {{
+      position: relative;
+    }}
+    .amazify-color-swatch-button {{
+      width: 40px;
+      height: 34px;
       border: 1px solid rgba(255,255,255,0.18);
       border-radius: 6px;
       background: #23282d;
-      padding: 3px;
+      padding: 4px;
       cursor: pointer;
     }}
-    .amazify-color-setting code,
+    .amazify-color-swatch-button:hover,
+    .amazify-color-swatch-button:focus-visible {{
+      border-color: #00a8e1;
+      outline: 2px solid rgba(0,168,225,0.2);
+      outline-offset: 1px;
+    }}
+    .amazify-color-swatch {{
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: 3px;
+      background: var(--amazify-color-value);
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2);
+      pointer-events: none;
+    }}
+    .amazify-color-hex {{
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 6px;
+      background: #23282d;
+    }}
+    .amazify-color-setting .amazify-color-prefix {{
+      display: inline-block;
+      margin: 0;
+      padding-left: 9px;
+      color: #929ca5;
+      font: 12px/32px "Cascadia Mono", Consolas, monospace;
+      user-select: none;
+    }}
+    [data-amazify-panel="true"] input.amazify-color-hex-input {{
+      width: 62px !important;
+      height: 32px !important;
+      min-height: 32px !important;
+      margin: 0 !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      outline: 0 !important;
+      background: transparent !important;
+      color: #f2f3f3 !important;
+      padding: 0 9px 0 1px !important;
+      font: 12px/32px "Cascadia Mono", Consolas, monospace !important;
+      text-transform: uppercase;
+    }}
+    .amazify-color-hex:focus-within {{
+      border-color: #00a8e1;
+      box-shadow: 0 0 0 2px rgba(0,168,225,0.2);
+    }}
+    .amazify-color-hex:has(input[aria-invalid="true"]) {{
+      border-color: #ff788c;
+    }}
+    [data-amazify-color-popover="true"] {{
+      position: fixed;
+      z-index: 2147483647;
+      width: 296px;
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 8px;
+      background: #181c1f;
+      color: #f2f3f3;
+      box-shadow: 0 18px 48px rgba(0,0,0,0.62);
+      font-family: "Amazon Ember", "Inter", "Segoe UI", Arial, sans-serif;
+    }}
+    .amazify-color-popover-head {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }}
+    .amazify-color-popover-head strong {{
+      font-size: 13px;
+      line-height: 18px;
+    }}
+    .amazify-color-popover-preview {{
+      width: 42px;
+      height: 26px;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 5px;
+      background: var(--amazify-color-value);
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2);
+    }}
+    .amazify-color-wheel-wrap {{
+      display: grid;
+      place-items: center;
+      margin: 2px 0 12px;
+    }}
+    [data-amazify-color-popover="true"] [data-amazify-color-wheel] {{
+      --amazify-wheel-x: 50%;
+      --amazify-wheel-y: 50%;
+      --amazify-wheel-dim: 0;
+      position: relative;
+      width: 164px !important;
+      height: 164px !important;
+      min-width: 164px !important;
+      min-height: 164px !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: hidden;
+      border: 2px solid rgba(255,255,255,0.7) !important;
+      border-radius: 50% !important;
+      outline: 0;
+      background:
+        radial-gradient(circle, #fff 0%, rgba(255,255,255,0) 100%),
+        conic-gradient(from 0deg, #f33, #ff3, #3f3, #3ff, #33f, #f3f, #f33) !important;
+      box-shadow: 0 7px 24px rgba(0,0,0,0.36), inset 0 0 0 1px rgba(0,0,0,0.2) !important;
+      cursor: crosshair;
+      touch-action: none;
+    }}
+    [data-amazify-color-wheel]::before {{
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: rgba(0,0,0,var(--amazify-wheel-dim));
+      pointer-events: none;
+    }}
+    [data-amazify-color-wheel]::after {{
+      content: "";
+      position: absolute;
+      left: var(--amazify-wheel-x);
+      top: var(--amazify-wheel-y);
+      width: 14px;
+      height: 14px;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      background: transparent;
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.72), 0 2px 7px rgba(0,0,0,0.7);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }}
+    [data-amazify-color-popover="true"] [data-amazify-color-wheel]:focus-visible {{
+      border-color: #00a8e1 !important;
+      box-shadow: 0 0 0 3px rgba(0,168,225,0.3), 0 7px 24px rgba(0,0,0,0.36) !important;
+    }}
+    .amazify-color-popover-row {{
+      display: grid;
+      grid-template-columns: 66px minmax(0, 1fr) 34px;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+    }}
+    .amazify-color-popover-row span,
+    .amazify-color-popover-row output {{
+      margin: 0;
+      color: #cbd1d6;
+      font-size: 11px;
+      line-height: 16px;
+    }}
+    .amazify-color-popover-row output {{
+      text-align: right;
+      font-family: "Cascadia Mono", Consolas, monospace;
+    }}
+    [data-amazify-color-popover="true"] input[type="range"] {{
+      appearance: none !important;
+      width: 100% !important;
+      height: 8px !important;
+      min-height: 8px !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+      border-radius: 4px !important;
+      box-shadow: none !important;
+      cursor: pointer;
+    }}
+    [data-amazify-color-popover="true"] input[type="range"]::-webkit-slider-thumb {{
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      background: #202429;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.55);
+    }}
+    [data-amazify-color-hue] {{
+      background: linear-gradient(90deg, #f33, #ff3, #3f3, #3ff, #33f, #f3f, #f33) !important;
+    }}
+    [data-amazify-color-saturation] {{
+      background: linear-gradient(90deg, var(--amazify-saturation-start), var(--amazify-saturation-end)) !important;
+    }}
+    [data-amazify-color-value] {{
+      background: linear-gradient(90deg, #000, var(--amazify-value-end)) !important;
+    }}
+    .amazify-color-popover-done {{
+      min-height: 28px;
+      border: 0;
+      border-radius: 14px;
+      padding: 0 11px;
+      background: #00a8e1;
+      color: #061116;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }}
     .amazify-range-setting output {{
       min-width: 58px;
       color: #cbd1d6;
@@ -932,6 +1137,32 @@ def build_runtime_script(
     .amazify-quiet:hover {{
       background: #2b3137;
     }}
+    .amazify-icon-button {{
+      width: 28px;
+      min-width: 28px;
+      height: 28px;
+      min-height: 28px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0;
+      border-radius: 3px;
+      background: transparent;
+      color: #cbd1d6;
+    }}
+    .amazify-icon-button:hover {{
+      background: transparent;
+      color: #00a8e1;
+    }}
+    .amazify-icon-button:focus-visible {{
+      outline: 2px solid #00a8e1;
+      outline-offset: 2px;
+    }}
+    .amazify-icon-button svg {{
+      display: block;
+      width: 17px;
+      height: 17px;
+      pointer-events: none;
+    }}
     .amazify-setting-row {{
       display: flex;
       align-items: center;
@@ -1060,7 +1291,7 @@ def build_runtime_script(
   }}
 
   function removeRuntimeSurfaces() {{
-    document.querySelectorAll(`${{ROOT_SELECTOR}}, ${{PANEL_SELECTOR}}, ${{MENU_SELECTOR}}`).forEach((node) => node.remove());
+    document.querySelectorAll(`${{ROOT_SELECTOR}}, ${{PANEL_SELECTOR}}, ${{MENU_SELECTOR}}, [data-amazify-color-popover="true"]`).forEach((node) => node.remove());
   }}
 
   function findSearchInput() {{
@@ -1157,6 +1388,10 @@ def build_runtime_script(
     renderMenu(anchor);
   }}
 
+  function settingsIconMarkup() {{
+    return `<svg class="lucide lucide-settings" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+  }}
+
   function addTrustedLifecycleClick(target, handler) {{
     NATIVE_ADD_EVENT_LISTENER(target, "click", (event) => {{
       if (!event || event.isTrusted !== true) return;
@@ -1232,12 +1467,14 @@ def build_runtime_script(
   function closePanel() {{
     state.activePanel = null;
     state.activePluginSettingsId = "";
+    closeColorPicker();
     cleanupRenderedSettingsSections();
     const existingPanel = document.querySelector(PANEL_SELECTOR);
     if (existingPanel) existingPanel.remove();
   }}
 
   function renderPanel() {{
+    closeColorPicker();
     cleanupRenderedSettingsSections();
     const panel = ensurePanel();
     const active = state.activePanel || "marketplace";
@@ -1426,7 +1663,7 @@ def build_runtime_script(
     if (type === "boolean") {{
       control = `<button class="amazify-toggle" type="button" aria-label="${{label}}" aria-pressed="${{value ? "true" : "false"}}" data-amazify-plugin-setting="${{esc(pluginId)}}" data-amazify-plugin-setting-id="${{esc(settingId)}}" data-amazify-plugin-setting-type="boolean"></button>`;
     }} else if (type === "color") {{
-      control = `<label class="amazify-color-setting"><input type="color" value="${{esc(value)}}" aria-label="${{label}}" data-amazify-plugin-setting="${{esc(pluginId)}}" data-amazify-plugin-setting-id="${{esc(settingId)}}" data-amazify-plugin-setting-type="color"><code data-amazify-setting-output>${{esc(value)}}</code></label>`;
+      control = `<div class="amazify-color-setting" data-amazify-color-plugin="${{esc(pluginId)}}" data-amazify-color-setting-id="${{esc(settingId)}}"><button class="amazify-color-swatch-button" type="button" aria-label="Choose ${{label}}" data-amazify-color-picker><span class="amazify-color-swatch" style="--amazify-color-value:${{esc(value)}}"></span></button><label class="amazify-color-hex" aria-label="${{label}} hex code"><span class="amazify-color-prefix" aria-hidden="true">#</span><input class="amazify-color-hex-input" type="text" value="${{esc(NATIVE_STRING(value).replace(/^#/, ""))}}" maxlength="7" spellcheck="false" autocomplete="off" data-amazify-color-hex></label></div>`;
     }} else if (type === "image") {{
       const accepted = NATIVE_ARRAY_IS_ARRAY(definition.accept) ? definition.accept.join(",") : "image/png,image/jpeg,image/webp";
       const preview = value
@@ -1482,7 +1719,251 @@ def build_runtime_script(
     `;
   }}
 
+  function closeColorPicker() {{
+    const picker = document.querySelector('[data-amazify-color-popover="true"]');
+    if (picker) {{
+      if (typeof picker.__amazifyColorCleanup === "function") picker.__amazifyColorCleanup();
+      picker.remove();
+    }}
+  }}
+
+  function colorHexToHsv(value) {{
+    const hex = NATIVE_STRING(value || "").replace(/^#/, "");
+    const red = Number.parseInt(hex.slice(0, 2), 16) / 255;
+    const green = Number.parseInt(hex.slice(2, 4), 16) / 255;
+    const blue = Number.parseInt(hex.slice(4, 6), 16) / 255;
+    const maximum = Math.max(red, green, blue);
+    const minimum = Math.min(red, green, blue);
+    const delta = maximum - minimum;
+    let hue = 0;
+    if (delta > 0) {{
+      if (maximum === red) hue = 60 * (((green - blue) / delta) % 6);
+      else if (maximum === green) hue = 60 * (((blue - red) / delta) + 2);
+      else hue = 60 * (((red - green) / delta) + 4);
+    }}
+    if (hue < 0) hue += 360;
+    return {{
+      hue: Math.round(hue),
+      saturation: maximum === 0 ? 0 : Math.round((delta / maximum) * 100),
+      value: Math.round(maximum * 100)
+    }};
+  }}
+
+  function colorHsvToHex(hue, saturation, value) {{
+    const h = ((Number(hue) % 360) + 360) % 360;
+    const s = Math.max(0, Math.min(100, Number(saturation))) / 100;
+    const v = Math.max(0, Math.min(100, Number(value))) / 100;
+    const chroma = v * s;
+    const section = h / 60;
+    const intermediate = chroma * (1 - Math.abs((section % 2) - 1));
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    if (section < 1) [red, green, blue] = [chroma, intermediate, 0];
+    else if (section < 2) [red, green, blue] = [intermediate, chroma, 0];
+    else if (section < 3) [red, green, blue] = [0, chroma, intermediate];
+    else if (section < 4) [red, green, blue] = [0, intermediate, chroma];
+    else if (section < 5) [red, green, blue] = [intermediate, 0, chroma];
+    else [red, green, blue] = [chroma, 0, intermediate];
+    const match = v - chroma;
+    const channel = (component) => Math.round((component + match) * 255)
+      .toString(16)
+      .padStart(2, "0");
+    return `#${{channel(red)}}${{channel(green)}}${{channel(blue)}}`;
+  }}
+
+  function openColorPicker(anchor, label, initialValue, commit) {{
+    closeColorPicker();
+    const color = colorHexToHsv(initialValue);
+    const picker = document.createElement("div");
+    picker.dataset.amazifyColorPopover = "true";
+    picker.setAttribute("role", "dialog");
+    picker.setAttribute("aria-label", `${{label}} color picker`);
+    picker.innerHTML = `
+      <div class="amazify-color-popover-head">
+        <strong>${{esc(label)}}</strong>
+        <span class="amazify-color-popover-preview" style="--amazify-color-value:${{esc(initialValue)}}" aria-hidden="true"></span>
+        <button class="amazify-color-popover-done" type="button" data-amazify-color-done>Done</button>
+      </div>
+      <div class="amazify-color-wheel-wrap"><button type="button" data-amazify-color-wheel aria-label="Hue and saturation color wheel"></button></div>
+      <label class="amazify-color-popover-row"><span>Hue</span><input type="range" min="0" max="359" step="1" value="${{color.hue}}" data-amazify-color-hue><output>${{color.hue}}</output></label>
+      <label class="amazify-color-popover-row"><span>Saturation</span><input type="range" min="0" max="100" step="1" value="${{color.saturation}}" data-amazify-color-saturation><output>${{color.saturation}}</output></label>
+      <label class="amazify-color-popover-row"><span>Brightness</span><input type="range" min="0" max="100" step="1" value="${{color.value}}" data-amazify-color-value><output>${{color.value}}</output></label>
+    `;
+    document.body.appendChild(picker);
+
+    const anchorRect = anchor.getBoundingClientRect();
+    const pickerRect = picker.getBoundingClientRect();
+    const left = Math.max(8, Math.min(window.innerWidth - pickerRect.width - 8, anchorRect.right - pickerRect.width));
+    const below = anchorRect.bottom + 8;
+    const top = below + pickerRect.height <= window.innerHeight - 8
+      ? below
+      : Math.max(8, anchorRect.top - pickerRect.height - 8);
+    picker.style.left = `${{Math.round(left)}}px`;
+    picker.style.top = `${{Math.round(top)}}px`;
+
+    const wheel = picker.querySelector("[data-amazify-color-wheel]");
+    const hue = picker.querySelector("[data-amazify-color-hue]");
+    const saturation = picker.querySelector("[data-amazify-color-saturation]");
+    const brightness = picker.querySelector("[data-amazify-color-value]");
+    const preview = picker.querySelector(".amazify-color-popover-preview");
+    const refresh = (commitValue = true) => {{
+      const hueValue = Number(hue.value);
+      const saturationValue = Number(saturation.value);
+      const brightnessValue = Number(brightness.value);
+      const next = colorHsvToHex(hueValue, saturationValue, brightnessValue);
+      hue.nextElementSibling.textContent = NATIVE_STRING(Math.round(hueValue));
+      saturation.nextElementSibling.textContent = NATIVE_STRING(Math.round(saturationValue));
+      brightness.nextElementSibling.textContent = NATIVE_STRING(Math.round(brightnessValue));
+      saturation.style.setProperty("--amazify-saturation-start", colorHsvToHex(hueValue, 0, brightnessValue));
+      saturation.style.setProperty("--amazify-saturation-end", colorHsvToHex(hueValue, 100, brightnessValue));
+      brightness.style.setProperty("--amazify-value-end", colorHsvToHex(hueValue, saturationValue, 100));
+      preview.style.setProperty("--amazify-color-value", next);
+      const wheelRadius = Math.max(0, (wheel.clientWidth / 2) - 9);
+      const angle = (hueValue - 90) * Math.PI / 180;
+      const selectionRadius = wheelRadius * saturationValue / 100;
+      wheel.style.setProperty("--amazify-wheel-x", `${{wheel.clientWidth / 2 + Math.cos(angle) * selectionRadius}}px`);
+      wheel.style.setProperty("--amazify-wheel-y", `${{wheel.clientHeight / 2 + Math.sin(angle) * selectionRadius}}px`);
+      wheel.style.setProperty("--amazify-wheel-dim", NATIVE_STRING(Math.max(0, 1 - brightnessValue / 100)));
+      wheel.setAttribute("aria-label", `Hue ${{Math.round(hueValue)}} degrees, saturation ${{Math.round(saturationValue)}} percent`);
+      if (commitValue) commit(next);
+    }};
+    const updateFromWheelPoint = (clientX, clientY, commitValue = false) => {{
+      const wheelRect = wheel.getBoundingClientRect();
+      const centerX = wheelRect.left + wheelRect.width / 2;
+      const centerY = wheelRect.top + wheelRect.height / 2;
+      const deltaX = clientX - centerX;
+      const deltaY = clientY - centerY;
+      const wheelRadius = Math.max(1, Math.min(wheelRect.width, wheelRect.height) / 2 - 9);
+      hue.value = NATIVE_STRING(Math.round((Math.atan2(deltaY, deltaX) * 180 / Math.PI + 90 + 360) % 360));
+      saturation.value = NATIVE_STRING(Math.round(Math.min(1, Math.hypot(deltaX, deltaY) / wheelRadius) * 100));
+      refresh(commitValue);
+    }};
+    let wheelDragging = false;
+    let wheelFrame = 0;
+    let pendingWheelPoint = null;
+    const queueWheelPoint = (clientX, clientY) => {{
+      pendingWheelPoint = {{ clientX, clientY }};
+      if (wheelFrame) return;
+      wheelFrame = NATIVE_REQUEST_ANIMATION_FRAME(() => {{
+        wheelFrame = 0;
+        const point = pendingWheelPoint;
+        pendingWheelPoint = null;
+        if (point) updateFromWheelPoint(point.clientX, point.clientY, false);
+      }});
+    }};
+    const finishWheelDrag = (clientX, clientY) => {{
+      pendingWheelPoint = null;
+      if (wheelFrame) {{
+        NATIVE_CANCEL_ANIMATION_FRAME(wheelFrame);
+        wheelFrame = 0;
+      }}
+      updateFromWheelPoint(clientX, clientY, true);
+      wheelDragging = false;
+    }};
+    picker.__amazifyColorCleanup = () => {{
+      pendingWheelPoint = null;
+      wheelDragging = false;
+      if (wheelFrame) {{
+        NATIVE_CANCEL_ANIMATION_FRAME(wheelFrame);
+        wheelFrame = 0;
+      }}
+    }};
+    NATIVE_ADD_EVENT_LISTENER(wheel, "pointerdown", (event) => {{
+      if (!event || event.isTrusted !== true) return;
+      wheelDragging = true;
+      try {{ wheel.setPointerCapture(event.pointerId); }} catch (_) {{}}
+      updateFromWheelPoint(event.clientX, event.clientY, false);
+      event.preventDefault();
+    }});
+    NATIVE_ADD_EVENT_LISTENER(wheel, "pointermove", (event) => {{
+      if (!wheelDragging || !event || event.isTrusted !== true) return;
+      queueWheelPoint(event.clientX, event.clientY);
+      event.preventDefault();
+    }});
+    NATIVE_ADD_EVENT_LISTENER(wheel, "pointerup", (event) => {{
+      if (!event || event.isTrusted !== true) return;
+      if (wheelDragging) finishWheelDrag(event.clientX, event.clientY);
+    }});
+    NATIVE_ADD_EVENT_LISTENER(wheel, "pointercancel", (event) => {{
+      if (!event || event.isTrusted !== true || !wheelDragging) return;
+      picker.__amazifyColorCleanup();
+      refresh(true);
+    }});
+    NATIVE_ADD_EVENT_LISTENER(wheel, "keydown", (event) => {{
+      if (!event || event.isTrusted !== true) return;
+      const amount = event.shiftKey ? 10 : 1;
+      if (event.key === "ArrowLeft") hue.value = NATIVE_STRING((Number(hue.value) - amount + 360) % 360);
+      else if (event.key === "ArrowRight") hue.value = NATIVE_STRING((Number(hue.value) + amount) % 360);
+      else if (event.key === "ArrowUp") saturation.value = NATIVE_STRING(Math.min(100, Number(saturation.value) + amount));
+      else if (event.key === "ArrowDown") saturation.value = NATIVE_STRING(Math.max(0, Number(saturation.value) - amount));
+      else return;
+      refresh();
+      event.preventDefault();
+    }});
+    [hue, saturation, brightness].forEach((control) => {{
+      NATIVE_ADD_EVENT_LISTENER(control, "input", (event) => {{
+        if (!event || event.isTrusted !== true) return;
+        refresh(false);
+      }});
+      NATIVE_ADD_EVENT_LISTENER(control, "change", (event) => {{
+        if (!event || event.isTrusted !== true) return;
+        refresh(true);
+      }});
+    }});
+    addTrustedLifecycleClick(picker.querySelector("[data-amazify-color-done]"), closeColorPicker);
+    refresh(false);
+  }}
+
   function bindPluginSettingControls(panel) {{
+    panel.querySelectorAll(".amazify-color-setting").forEach((wrapper) => {{
+      const pickerButton = wrapper.querySelector("[data-amazify-color-picker]");
+      const hexInput = wrapper.querySelector("[data-amazify-color-hex]");
+      const swatch = wrapper.querySelector(".amazify-color-swatch");
+      const pluginId = wrapper.dataset.amazifyColorPlugin;
+      const settingId = wrapper.dataset.amazifyColorSettingId;
+      const manifest = manifestForPlugin(pluginId);
+      const definition = pluginSettingDefinition(manifest, settingId);
+      if (!pickerButton || !hexInput || !swatch || !pluginId || !settingId || !definition) return;
+
+      const sync = (value) => {{
+        const normalized = NATIVE_STRING(value || "").toLowerCase();
+        hexInput.value = normalized.replace(/^#/, "").toUpperCase();
+        hexInput.setAttribute("aria-invalid", "false");
+        swatch.style.setProperty("--amazify-color-value", normalized);
+      }};
+      const commit = (value) => {{
+        try {{
+          sync(setPluginSetting(pluginId, settingId, value));
+          state.lastError = "";
+          return true;
+        }} catch (error) {{
+          state.lastError = error.message || NATIVE_STRING(error);
+          return false;
+        }}
+      }};
+
+      addTrustedLifecycleClick(pickerButton, () => {{
+        const current = pluginSettingValue(pluginId, manifest, settingId);
+        openColorPicker(pickerButton, definition.label || settingId, current, commit);
+      }});
+      NATIVE_ADD_EVENT_LISTENER(hexInput, "input", (event) => {{
+        if (!event || event.isTrusted !== true) return;
+        const digits = NATIVE_STRING(hexInput.value || "")
+          .replace(/#/g, "")
+          .replace(/[^0-9a-f]/gi, "")
+          .slice(0, 6);
+        hexInput.value = digits.toUpperCase();
+        const complete = digits.length === 6;
+        hexInput.setAttribute("aria-invalid", complete ? "false" : "true");
+        if (complete) commit(`#${{digits}}`);
+      }});
+      NATIVE_ADD_EVENT_LISTENER(hexInput, "change", (event) => {{
+        if (!event || event.isTrusted !== true) return;
+        const current = pluginSettingValue(pluginId, manifestForPlugin(pluginId), settingId);
+        sync(current);
+      }});
+    }});
     panel.querySelectorAll("[data-amazify-plugin-setting]").forEach((control) => {{
       const pluginId = control.dataset.amazifyPluginSetting;
       const settingId = control.dataset.amazifyPluginSettingId;
@@ -1623,7 +2104,7 @@ def build_runtime_script(
         ? "Amazify stock plugin with pinned source and SHA-256 verification"
         : "Local plugin - source integrity is managed by you";
     const actionButton = isInstalled
-      ? `<button class="amazify-quiet" type="button" data-amazify-open-plugin-settings="${{esc(manifest.id)}}">Settings</button>`
+      ? `<button class="amazify-quiet amazify-icon-button" type="button" aria-label="Open ${{esc(manifest.name)}} settings" title="Plugin settings" data-amazify-open-plugin-settings="${{esc(manifest.id)}}">${{settingsIconMarkup()}}</button>`
       : catalog
         ? `<button class="amazify-primary" type="button" data-amazify-install-plugin="${{esc(manifest.id)}}" ${{incompatible ? "disabled" : ""}}>Download</button>`
         : "";
@@ -2632,7 +3113,7 @@ def build_cleanup_script() -> str:
     return """
 (() => {
   window.dispatchEvent(new Event("amazify-runtime-cleanup-request"));
-  document.querySelectorAll('[data-amazify-root="true"], [data-amazify-panel="true"], [data-amazify-menu="true"], [data-amazify-plugin-id], [data-amazify-style-id]').forEach((node) => node.remove());
+  document.querySelectorAll('[data-amazify-root="true"], [data-amazify-panel="true"], [data-amazify-menu="true"], [data-amazify-color-popover="true"], [data-amazify-plugin-id], [data-amazify-style-id]').forEach((node) => node.remove());
   const runtimeStyle = document.getElementById("amazify-runtime-style");
   if (runtimeStyle) runtimeStyle.remove();
   return true;
