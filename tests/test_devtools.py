@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import json
 import unittest
 from unittest import mock
@@ -218,6 +219,19 @@ class DevToolsTargetSecurityTests(unittest.TestCase):
         with mock.patch("amazify.devtools._open_devtools_url", return_value=response):
             with self.assertRaisesRegex(DevToolsError, "redirected unexpectedly"):
                 DevToolsHttp(61234).list_targets()
+
+    def test_target_list_wraps_malformed_http_status(self) -> None:
+        error = http.client.BadStatusLine("GET /json/list HTTP/1.1")
+
+        with (
+            mock.patch("amazify.devtools._open_devtools_url", side_effect=error),
+            self.assertRaisesRegex(
+                DevToolsError, "Unable to read DevTools target list"
+            ) as raised,
+        ):
+            DevToolsHttp(61234).list_targets()
+
+        self.assertIs(raised.exception.__cause__, error)
 
     def test_target_list_records_selected_port(self) -> None:
         payload = [

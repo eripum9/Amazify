@@ -21,6 +21,7 @@ from amazify.cli import (
     request_daemon_launch,
     run,
     show_first_run_welcome,
+    status_daemon_command,
     update_command,
 )
 from amazify.config import RuntimeConfig
@@ -158,7 +159,7 @@ class CliDevToolsPortTests(unittest.TestCase):
             main(["--version"])
 
         self.assertEqual(raised.exception.code, 0)
-        self.assertEqual(output.getvalue().strip(), "amazify 1.1.0")
+        self.assertEqual(output.getvalue().strip(), "amazify 1.1.1")
 
     def test_update_install_requires_available_verified_release(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -362,6 +363,25 @@ class CliDevToolsPortTests(unittest.TestCase):
             )
 
             self.assertEqual(recent_devtools_ports(config), [51172, 51394, 50076])
+
+    def test_daemon_status_ignores_invalid_pid_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            config = make_config(Path(temp))
+            config.daemon_state_file.write_text(
+                '{"pid":{"invalid":true},"status":"idle"}', encoding="utf-8"
+            )
+            output = io.StringIO()
+
+            with (
+                mock.patch("amazify.cli.RuntimeConfig.create", return_value=config),
+                mock.patch("amazify.cli.is_pid_running") as is_pid_running,
+                redirect_stdout(output),
+            ):
+                exit_code = status_daemon_command(mock.Mock())
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn("Amazify daemon: stopped", output.getvalue())
+            is_pid_running.assert_not_called()
 
     def test_connect_or_launch_reuses_known_port_before_launching(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

@@ -20,14 +20,16 @@ def _runtime_logo_data_uri() -> str:
 
 
 def _read_runtime_logo() -> bytes:
-    candidates: list[object] = []
     try:
-        candidates.append(resources.files("amazify").joinpath("assets/logo.png"))
-    except (FileNotFoundError, ModuleNotFoundError, OSError):
+        package_logo = resources.files("amazify").joinpath("assets/logo.png")
+        data = package_logo.read_bytes()
+        if data:
+            return data
+    except (FileNotFoundError, ModuleNotFoundError, OSError, AttributeError):
         pass
 
     package_dir = Path(__file__).resolve().parent
-    candidates.append(package_dir / "assets" / "logo.png")
+    candidates = [package_dir / "assets" / "logo.png"]
     mei_pass = getattr(sys, "_MEIPASS", None)
     if mei_pass:
         candidates.append(Path(mei_pass) / "amazify" / "assets" / "logo.png")

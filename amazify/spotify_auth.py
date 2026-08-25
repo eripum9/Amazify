@@ -111,11 +111,18 @@ class DpapiTokenStore:
             ctypes.windll.kernel32.LocalFree(output_blob.pbData)
 
 
+class _CallbackServer(http.server.ThreadingHTTPServer):
+    oauth_result: dict[str, str] | None = None
+
+
 class _CallbackHandler(http.server.BaseHTTPRequestHandler):
     server_version = "AmazifyOAuth/1"
 
     def do_GET(self) -> None:
         server = self.server
+        if not isinstance(server, _CallbackServer):
+            self.send_error(500)
+            return
         parsed = urllib.parse.urlsplit(self.path)
         if parsed.path != "/callback":
             self.send_error(404)
@@ -161,7 +168,7 @@ class SpotifyAuth:
         self._status = "connected" if self._refresh_token else "disconnected"
         self._detail = ""
         self._auth_thread: threading.Thread | None = None
-        self._callback_server: http.server.ThreadingHTTPServer | None = None
+        self._callback_server: _CallbackServer | None = None
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -230,11 +237,10 @@ class SpotifyAuth:
         challenge = base64.urlsafe_b64encode(
             hashlib.sha256(verifier.encode("ascii")).digest()
         ).rstrip(b"=").decode("ascii")
-        server: http.server.ThreadingHTTPServer | None = None
+        server: _CallbackServer | None = None
         try:
-            server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _CallbackHandler)
+            server = _CallbackServer(("127.0.0.1", 0), _CallbackHandler)
             server.timeout = 0.5
-            server.oauth_result = None
             with self._lock:
                 self._callback_server = server
             port = int(server.server_address[1])

@@ -25,8 +25,11 @@ class LyricsCacheTests(unittest.TestCase):
             path = Path(temp) / "lyrics.sqlite3"
             cache = LyricsCache(path)
             cache.store_mapping("amazon:key", "spotify-id", 1, {}, 1)
-            cache._connection.execute("UPDATE metadata SET value = '999' WHERE key = 'schema_version'")
-            cache._connection.commit()
+            connection = cache._require_connection()
+            connection.execute(
+                "UPDATE metadata SET value = '999' WHERE key = 'schema_version'"
+            )
+            connection.commit()
             cache.close()
             reopened = LyricsCache(path)
             self.assertIsNone(reopened.get_mapping("amazon:key", 1))
@@ -41,6 +44,15 @@ class LyricsCacheTests(unittest.TestCase):
             self.assertIsNone(cache.get_lyrics("spicy-lyrics", "old"))
             self.assertEqual(cache.get_lyrics("spicy-lyrics", "new")["payload"], payload)
             cache.close()
+
+    def test_operations_after_close_fail_predictably(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            cache = LyricsCache(Path(temp) / "lyrics.sqlite3")
+            cache.close()
+            cache.close()
+
+            with self.assertRaisesRegex(RuntimeError, "Lyrics cache is closed"):
+                cache.get_mapping("amazon:key", 1)
 
 
 if __name__ == "__main__":

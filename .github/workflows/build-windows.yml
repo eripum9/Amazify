@@ -1,4 +1,4 @@
-name: Build Windows Candidate
+name: Build Windows Release Draft
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
   attestations: write
 
@@ -234,7 +234,7 @@ jobs:
             "- Microsoft Defender: $env:AMAZIFY_DEFENDER_RESULT"
             '- Dependencies: hash-locked runtime and build environments audited with pip-audit'
             '- Verification: compile, pytest coverage, workflow contracts, Ruff, Pyright, executable smoke, and isolated installer/uninstaller smoke passed'
-            '- Distribution: Actions artifact only; no GitHub release was created'
+            '- Distribution: workflow-created draft GitHub release and retained Actions artifact'
           )
           Set-Content -LiteralPath 'dist\evidence\security-report.md' -Value $report -Encoding utf8NoBOM
           Copy-Item -LiteralPath 'dist\SHA256SUMS.txt' -Destination 'dist\evidence\SHA256SUMS.txt'
@@ -273,3 +273,34 @@ jobs:
             dist/evidence
           if-no-files-found: error
           retention-days: 30
+
+      - name: Create draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AMAZIFY_CANDIDATE_VERSION: ${{ steps.source.outputs.version }}
+          AMAZIFY_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          $tag = "v$env:AMAZIFY_CANDIDATE_VERSION"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            throw "Release $tag already exists. Refusing to replace it."
+          }
+          $notesPath = Join-Path $env:RUNNER_TEMP 'amazify-draft-notes.md'
+          $notes = @(
+            "Amazify $tag passed the Windows release workflow."
+            ''
+            'This is a draft. Replace these notes before publishing.'
+          )
+          Set-Content -LiteralPath $notesPath -Value $notes -Encoding utf8NoBOM
+          gh release create $tag `
+            --repo $env:GITHUB_REPOSITORY `
+            --target $env:AMAZIFY_SOURCE_SHA `
+            --title "Amazify $tag" `
+            --draft `
+            --notes-file $notesPath `
+            'dist/AmazifySetup.exe' `
+            'dist/SHA256SUMS.txt'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to create draft release $tag."
+          }

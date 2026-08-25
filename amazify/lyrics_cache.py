@@ -29,12 +29,13 @@ class LyricsCache:
         self._max_bytes = max_bytes
         self._lock = threading.RLock()
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._connection = sqlite3.connect(self.path, check_same_thread=False)
-        self._connection.row_factory = sqlite3.Row
+        connection = sqlite3.connect(self.path, check_same_thread=False)
+        connection.row_factory = sqlite3.Row
+        self._connection: sqlite3.Connection | None = connection
         with self._lock:
-            self._connection.execute("PRAGMA journal_mode=WAL")
-            self._connection.execute("PRAGMA synchronous=NORMAL")
-            self._connection.executescript(
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA synchronous=NORMAL")
+            connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS metadata (
                     key TEXT PRIMARY KEY,
@@ -61,22 +62,23 @@ class LyricsCache:
                 );
                 """
             )
-            stored = self._connection.execute(
+            stored = connection.execute(
                 "SELECT value FROM metadata WHERE key = 'schema_version'"
             ).fetchone()
             if stored is not None and stored["value"] != str(SCHEMA_VERSION):
-                self._connection.execute("DELETE FROM track_mapping")
-                self._connection.execute("DELETE FROM lyrics_payload")
-            self._connection.execute(
+                connection.execute("DELETE FROM track_mapping")
+                connection.execute("DELETE FROM lyrics_payload")
+            connection.execute(
                 "INSERT OR REPLACE INTO metadata(key, value) VALUES('schema_version', ?)",
                 (str(SCHEMA_VERSION),),
             )
-            self._connection.commit()
+            connection.commit()
 
     def get_mapping(self, amazon_key: str, resolver_version: int) -> dict[str, Any] | None:
         now = self._now()
         with self._lock:
-            row = self._connection.execute(
+            connection = self._require_connection()
+            row = connection.execute(
                 """
                 SELECT spotify_id, score, evidence_json
                 FROM track_mapping
@@ -85,16 +87,16 @@ class LyricsCache:
                 (amazon_key, resolver_version, now),
             ).fetchone()
             if row is None:
-                self._connection.execute(
+                connection.execute(
                     "DELETE FROM track_mapping WHERE amazon_key = ?", (amazon_key,)
                 )
-                self._connection.commit()
+                connection.commit()
                 return None
-            self._connection.execute(
+            connection.execute(
                 "UPDATE track_mapping SET last_accessed = ? WHERE amazon_key = ?",
                 (now, amazon_key),
             )
-            self._connection.commit()
+            connection.commit()
             try:
                 evidence = json.loads(row["evidence_json"])
             except (TypeError, json.JSONDecodeError):
@@ -117,7 +119,8 @@ class LyricsCache:
         now = self._now()
         encoded = json.dumps(evidence, separators=(",", ":"), sort_keys=True)
         with self._lock:
-            self._connection.execute(
+            connection = self._require_connection()
+            connection.execute(
                 """
                 INSERT OR REPLACE INTO track_mapping(
                     amazon_key, spotify_id, score, evidence_json,
@@ -134,13 +137,14 @@ class LyricsCache:
                     now,
                 ),
             )
-            self._connection.commit()
+            connection.commit()
             self._prune_locked()
 
     def get_lyrics(self, provider: str, track_id: str) -> dict[str, Any] | None:
         now = self._now()
         with self._lock:
-            row = self._connection.execute(
+            connection = self._require_connection()
+            row = connection.execute(
                 """
                 SELECT status, payload_json, provider_version
                 FROM lyrics_payload
@@ -149,20 +153,20 @@ class LyricsCache:
                 (provider, track_id, now),
             ).fetchone()
             if row is None:
-                self._connection.execute(
+                connection.execute(
                     "DELETE FROM lyrics_payload WHERE provider = ? AND provider_track_id = ?",
                     (provider, track_id),
                 )
-                self._connection.commit()
+                connection.commit()
                 return None
-            self._connection.execute(
+            connection.execute(
                 """
                 UPDATE lyrics_payload SET last_accessed = ?
                 WHERE provider = ? AND provider_track_id = ?
                 """,
                 (now, provider, track_id),
             )
-            self._connection.commit()
+            connection.commit()
             payload: Any = None
             if row["payload_json"] is not None:
                 try:
@@ -219,7 +223,8 @@ class LyricsCache:
     ) -> None:
         now = self._now()
         with self._lock:
-            self._connection.execute(
+            connection = self._require_connection()
+            connection.execute(
                 """
                 INSERT OR REPLACE INTO lyrics_payload(
                     provider, provider_track_id, status, payload_json,
@@ -236,58 +241,66 @@ class LyricsCache:
                     now,
                 ),
             )
-            self._connection.commit()
+            connection.commit()
             self._prune_locked()
 
     def clear(self) -> None:
         with self._lock:
-            self._connection.execute("DELETE FROM track_mapping")
-            self._connection.execute("DELETE FROM lyrics_payload")
-            self._connection.commit()
-            self._connection.execute("VACUUM")
+            connection = self._require_connection()
+            connection.execute("DELETE FROM track_mapping")
+            connection.execute("DELETE FROM lyrics_payload")
+            connection.commit()
+            connection.execute("VACUUM")
 
     def close(self) -> None:
         with self._lock:
             if self._connection is not None:
                 self._connection.close()
-                self._connection = None  # type: ignore[assignment]
+                self._connection = None
+
+    def _require_connection(self) -> sqlite3.Connection:
+        connection = self._connection
+        if connection is None:
+            raise RuntimeError("Lyrics cache is closed")
+        return connection
 
     def _prune_locked(self) -> None:
         now = self._now()
-        self._connection.execute("DELETE FROM track_mapping WHERE expires_at <= ?", (now,))
-        self._connection.execute("DELETE FROM lyrics_payload WHERE expires_at <= ?", (now,))
-        self._connection.commit()
-        page_size = int(self._connection.execute("PRAGMA page_size").fetchone()[0])
+        connection = self._require_connection()
+        connection.execute("DELETE FROM track_mapping WHERE expires_at <= ?", (now,))
+        connection.execute("DELETE FROM lyrics_payload WHERE expires_at <= ?", (now,))
+        connection.commit()
+        page_size = int(connection.execute("PRAGMA page_size").fetchone()[0])
         removed = False
         while True:
-            page_count = int(self._connection.execute("PRAGMA page_count").fetchone()[0])
-            free_pages = int(self._connection.execute("PRAGMA freelist_count").fetchone()[0])
+            page_count = int(connection.execute("PRAGMA page_count").fetchone()[0])
+            free_pages = int(connection.execute("PRAGMA freelist_count").fetchone()[0])
             used_size = max(0, page_count - free_pages) * page_size
             if used_size <= self._max_bytes:
                 break
-            row = self._connection.execute(
+            row = connection.execute(
                 """
                 SELECT provider, provider_track_id FROM lyrics_payload
                 ORDER BY last_accessed ASC LIMIT 1
                 """
             ).fetchone()
             if row is not None:
-                self._connection.execute(
+                connection.execute(
                     "DELETE FROM lyrics_payload WHERE provider = ? AND provider_track_id = ?",
                     (row["provider"], row["provider_track_id"]),
                 )
             else:
-                mapping = self._connection.execute(
+                mapping = connection.execute(
                     "SELECT amazon_key FROM track_mapping ORDER BY last_accessed ASC LIMIT 1"
                 ).fetchone()
                 if mapping is None:
                     break
-                self._connection.execute(
+                connection.execute(
                     "DELETE FROM track_mapping WHERE amazon_key = ?",
                     (mapping["amazon_key"],),
                 )
-            self._connection.commit()
+            connection.commit()
             removed = True
         if removed:
-            self._connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            self._connection.execute("VACUUM")
+            connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            connection.execute("VACUUM")

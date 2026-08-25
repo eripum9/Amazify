@@ -93,15 +93,22 @@ class WorkflowSecurityContractTests(unittest.TestCase):
 
     def test_workflows_use_least_privilege_permissions(self) -> None:
         allowed_write_permissions = {
-            "build-windows.yml": {"attestations", "id-token"},
+            "build-windows.yml": {"attestations", "contents", "id-token"},
             "ci-windows.yml": set(),
             "security.yml": {"security-events"},
         }
+        expected_contents_permission = {
+            "build-windows.yml": "write",
+            "ci-windows.yml": "read",
+            "security.yml": "read",
+        }
         for filename, text in workflows().items():
             with self.subTest(workflow=filename):
-                self.assertRegex(text, r"(?m)^permissions:\n  contents: read(?:\n|$)")
+                self.assertRegex(
+                    text,
+                    rf"(?m)^permissions:\n  contents: {expected_contents_permission[filename]}(?:\n|$)",
+                )
                 self.assertNotIn("write-all", text.lower())
-                self.assertNotRegex(text, r"(?m)^\s*contents:\s*write\s*$")
                 self.assertEqual(
                     set(WRITE_PERMISSION_RE.findall(text)),
                     allowed_write_permissions[filename],
@@ -114,25 +121,30 @@ class WorkflowSecurityContractTests(unittest.TestCase):
                 with self.subTest(workflow=filename, block=block[:60]):
                     self.assertFalse(any(marker in block for marker in unsafe))
 
-    def test_no_workflow_can_publish_a_release(self) -> None:
+    def test_only_build_workflow_can_create_a_draft_release(self) -> None:
         forbidden = (
-            r"\bgh\s+release\b",
-            r"/releases(?:/|\b)",
             r"actions/create-release",
             r"softprops/action-gh-release",
             r"ncipollo/release-action",
-            r"\bcreate\s+(?:or\s+update\s+)?draft\s+release\b",
+            r"\bgh\s+release\s+edit\b.*--draft=false",
         )
         for filename, text in workflows().items():
             with self.subTest(workflow=filename):
                 for pattern in forbidden:
                     self.assertNotRegex(text.lower(), pattern)
+                if filename != "build-windows.yml":
+                    self.assertNotRegex(text.lower(), r"\bgh\s+release\b")
+        build = workflows()["build-windows.yml"]
+        self.assertIn("gh release create", build)
+        self.assertRegex(build, r"(?m)^\s+--draft\s+`?\s*$")
+        self.assertNotIn("--latest", build)
 
     def test_candidate_workflow_is_manual_only(self) -> None:
         text = workflows()["build-windows.yml"]
         self.assertRegex(text, r"(?m)^  workflow_dispatch:\s*$")
         self.assertNotRegex(text, r"(?m)^  (push|pull_request|schedule):\s*$")
         self.assertIn("Upload candidate artifact", text)
+        self.assertIn("Create draft release", text)
         self.assertIn("actions/attest@", text)
         self.assertIn("create-storage-record: false", text)
 

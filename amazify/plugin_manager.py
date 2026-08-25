@@ -918,9 +918,21 @@ class PluginManager:
 
             try:
                 status_value = getattr(response, "status", None)
-                status = int(
+                raw_status: object = (
                     status_value if status_value is not None else response.getcode()
                 )
+                if isinstance(raw_status, bool) or not isinstance(
+                    raw_status, (int, str)
+                ):
+                    raise PluginError(
+                        f"Unable to download {purpose}: invalid HTTP status"
+                    )
+                try:
+                    status = int(raw_status)
+                except ValueError as exc:
+                    raise PluginError(
+                        f"Unable to download {purpose}: invalid HTTP status"
+                    ) from exc
                 if status in REDIRECT_STATUSES:
                     location = response.headers.get("Location")
                     if not location:

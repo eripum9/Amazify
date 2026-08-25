@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import re
@@ -140,6 +141,7 @@ class DevToolsHttp:
         except DevToolsError:
             raise
         except (
+            http.client.HTTPException,
             OSError,
             UnicodeDecodeError,
             urllib.error.URLError,

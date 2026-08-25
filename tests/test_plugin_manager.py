@@ -110,6 +110,20 @@ class FakeRedirectResponse:
         return None
 
 
+class FakeMissingStatusResponse:
+    status = None
+    headers: dict[str, str] = {}
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    def getcode(self) -> None:
+        return None
+
+    def close(self) -> None:
+        self.closed = True
+
+
 class PluginManagerTests(unittest.TestCase):
     def test_manifest_validates_and_exposes_minimum_amazify_version(self) -> None:
         manifest = demo_manifest()
@@ -619,6 +633,23 @@ class PluginManagerTests(unittest.TestCase):
                     validator=manager._validate_catalog_url,
                     purpose="plugin catalog",
                 )
+
+    def test_remote_download_rejects_missing_http_status(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            manager = PluginManager(Path(temp) / "plugins", Path(temp) / "state.json")
+            response = FakeMissingStatusResponse()
+            with (
+                mock.patch.object(manager, "_open_once", return_value=response),
+                self.assertRaisesRegex(PluginError, "invalid HTTP status"),
+            ):
+                manager._read_remote_url_bytes(
+                    manager.catalog_url,
+                    max_bytes=1024,
+                    validator=manager._validate_catalog_url,
+                    purpose="plugin catalog",
+                )
+
+            self.assertTrue(response.closed)
 
     def test_state_writes_remain_valid_under_concurrent_commands(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

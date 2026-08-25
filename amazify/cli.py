@@ -13,6 +13,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TextIO
 
 from . import __version__
 from .app_updater import ApplicationUpdater, UpdateError
@@ -23,6 +24,7 @@ from .devtools import (
     DevToolsConnectionClosed,
     DevToolsError,
     DevToolsHttp,
+    Target,
 )
 from .launcher import (
     LaunchError,
@@ -59,7 +61,7 @@ DEVTOOLS_PORT_PATTERN = re.compile(r"(?:DevTools port:|with DevTools port)\s*(\d
 
 @dataclass(slots=True)
 class ConnectedTarget:
-    target: object
+    target: Target
     launched_by_amazify: bool = False
 
 
@@ -459,7 +461,7 @@ def start_daemon_command(args: argparse.Namespace) -> int:
 def stop_daemon_command(args: argparse.Namespace) -> int:
     config = RuntimeConfig.create()
     state = read_daemon_state(config)
-    pid = int(state.get("pid") or 0) if state else 0
+    pid = _coerce_int(state.get("pid")) or 0
     if not pid or not is_pid_running(pid):
         emit("Amazify daemon is not running.")
         mark_daemon_state(
@@ -500,7 +502,7 @@ def stop_daemon_command(args: argparse.Namespace) -> int:
 def status_daemon_command(args: argparse.Namespace) -> int:
     config = RuntimeConfig.create()
     state = read_daemon_state(config)
-    pid = int(state.get("pid") or 0) if state else 0
+    pid = _coerce_int(state.get("pid")) or 0
     running = bool(pid and is_pid_running(pid))
     if not state:
         emit("Amazify daemon is not running.")
@@ -529,7 +531,7 @@ def start_daemon(
     request_launch: bool = False,
 ) -> int:
     state = read_daemon_state(config)
-    pid = int(state.get("pid") or 0) if state else 0
+    pid = _coerce_int(state.get("pid")) or 0
     if pid and is_pid_running(pid):
         if request_launch:
             request_daemon_launch(config)
@@ -559,7 +561,7 @@ def start_daemon(
     deadline = time.monotonic() + DAEMON_START_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
         state = read_daemon_state(config)
-        pid = int(state.get("pid") or 0) if state else 0
+        pid = _coerce_int(state.get("pid")) or 0
         if pid and is_pid_running(pid):
             emit(f"Amazify daemon started with PID {pid}.")
             return 0
@@ -730,6 +732,14 @@ def run_daemon(args: argparse.Namespace) -> int:
                     message=str(exc),
                     log_file=log_file,
                 )
+            except Exception:
+                LOG.exception("Unexpected daemon attach failure; returning to idle")
+                mark_daemon_state(
+                    config,
+                    status="idle",
+                    message="Amazify daemon is waiting for Amazon Music.",
+                    log_file=log_file,
+                )
 
             if time.monotonic() - last_heartbeat >= DAEMON_HEARTBEAT_SECONDS:
                 last_heartbeat = time.monotonic()
@@ -827,7 +837,9 @@ def read_daemon_state(config: RuntimeConfig) -> dict[str, object]:
         data = json.loads(config.daemon_state_file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {}
+    return {key: value for key, value in data.items() if isinstance(key, str)}
 
 
 def request_daemon_stop(config: RuntimeConfig) -> None:
@@ -933,7 +945,7 @@ def connect_or_launch(
     *,
     connect_only: bool,
     prefer_known_ports: bool = True,
-) -> object:
+) -> Target:
     return connect_or_launch_result(
         config,
         connect_only=connect_only,
@@ -1002,7 +1014,7 @@ def connect_to_known_devtools_port(
     config: RuntimeConfig,
     *,
     include_log_ports: bool = True,
-) -> object | None:
+) -> Target | None:
     ports: list[int] = []
     for port in running_amazon_music_devtools_ports():
         _append_unique_port(ports, port)
@@ -1014,9 +1026,9 @@ def connect_to_known_devtools_port(
     if not ports:
         return None
 
-    targets: dict[int, object] = {}
+    targets: dict[int, Target] = {}
 
-    def probe(port: int) -> tuple[int, object | None]:
+    def probe(port: int) -> tuple[int, Target | None]:
         try:
             http = DevToolsHttp(port)
             http.request_timeout = 0.25
@@ -1108,14 +1120,26 @@ def recent_devtools_ports(config: RuntimeConfig) -> list[int]:
 
 
 def _append_unique_port(ports: list[int], value: object) -> None:
-    try:
-        port = int(value)
-    except (TypeError, ValueError):
+    port = _coerce_int(value)
+    if port is None:
         return
     if not 0 < port <= 65535:
         return
     if port not in ports:
         ports.append(port)
+
+
+def _coerce_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
 
 
 def list_candidates(args: argparse.Namespace) -> int:
@@ -1215,7 +1239,7 @@ def update_command(args: argparse.Namespace) -> int:
     return 0
 
 
-def emit(message: str = "", *, file: object | None = None) -> None:
+def emit(message: str = "", *, file: TextIO | None = None) -> None:
     stream = file if file is not None else sys.stdout
     if stream is None:
         return
