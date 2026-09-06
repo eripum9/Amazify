@@ -321,9 +321,14 @@ class LyricsProviderService:
             if not isinstance(payload.get("ttml"), str) or not payload["ttml"].strip():
                 raise _ProviderMiss("Better Lyrics has no TTML")
             score = payload.get("score")
-            if not isinstance(score, (int, float)) or isinstance(score, bool) or not math.isfinite(score):
+            score_value: float | None = None
+            if score is None or score == "":
+                score_value = None
+            elif isinstance(score, (int, float)) and not isinstance(score, bool) and math.isfinite(score):
+                score_value = float(score)
+            else:
                 raise _ProviderMalformed("Better Lyrics score is malformed")
-            if not MIN_BETTER_SCORE <= score <= 100:
+            if score_value is not None and not MIN_BETTER_SCORE <= score_value <= 100:
                 raise _ProviderMiss("Better Lyrics confidence is low")
             try:
                 return parse_ttml(payload["ttml"], source=provider, track_key=track["key"])

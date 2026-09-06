@@ -159,6 +159,38 @@ class LyricsProviderTests(unittest.TestCase):
             ])
             service.close()
 
+    def test_better_lyrics_missing_score_is_accepted(self) -> None:
+        opener = FakeOpener([{"ttml": RICH_TTML, "score": None}])
+        with tempfile.TemporaryDirectory() as temp:
+            service = self.make_service(Path(temp), opener)
+            result = service.load(track(), "request-1")
+            self.assertEqual(result["status"], "ready")
+            self.assertEqual(result["source"], "better-lyrics")
+            service.close()
+
+    def test_malformed_better_score_falls_through_to_unison(self) -> None:
+        unison = {
+            "success": True,
+            "data": {
+                "song": "Song",
+                "artist": "Artist",
+                "album": "Album",
+                "duration": 180,
+                "lyrics": RICH_TTML,
+                "format": "ttml",
+                "language": "en",
+                "syncType": "richsync",
+                "confidence": "high",
+            },
+        }
+        opener = FakeOpener([{"ttml": RICH_TTML, "score": "unknown"}, unison])
+        with tempfile.TemporaryDirectory() as temp:
+            service = self.make_service(Path(temp), opener)
+            result = service.load(track(), "request-1")
+            self.assertEqual(result["status"], "ready")
+            self.assertEqual(result["source"], "unison")
+            service.close()
+
     def test_unauthenticated_and_no_lyrics_responses_fall_through_without_negative_caching_errors(self) -> None:
         from urllib.error import HTTPError
 
