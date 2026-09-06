@@ -670,17 +670,65 @@ function findTransportControl(action) {
   return null;
 }
 
+function attemptMediaPlayPauseFallback() {
+  const transport = document.querySelector("#transportContainer");
+  const vue = transport && transport.__vue__;
+  const model = vue && vue.playerModel && typeof vue.playerModel === "object" ? vue.playerModel : null;
+  if (!model) {
+    return false;
+  }
+  const methodNames = [
+    "togglePlayPause",
+    "togglePlayback",
+    "playPause",
+    "onPlayPause",
+    "toggle",
+  ];
+  for (const methodName of methodNames) {
+    const method = model[methodName];
+    if (typeof method === "function") {
+      try {
+        method.call(model);
+        return true;
+      } catch (_error) {
+      }
+    }
+  }
+  return false;
+}
+
+function dispatchMediaPlayPauseKey() {
+  const events = [
+    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "MediaPlayPause", code: "MediaPlayPause" }),
+    new KeyboardEvent("keyup", { bubbles: true, cancelable: true, key: "MediaPlayPause", code: "MediaPlayPause" }),
+  ];
+  for (const event of events) {
+    try {
+      document.dispatchEvent(event);
+    } catch (_error) {
+    }
+  }
+}
+
 function onHoverControlClick(event) {
   const button = event.currentTarget;
   const action = button ? button.getAttribute("data-amazify-control") : "";
-  event.preventDefault();
-  event.stopPropagation();
   if (!action) {
     return;
   }
   const control = findTransportControl(action);
   if (control) {
+    event.preventDefault();
+    event.stopPropagation();
     control.click();
+    return;
+  }
+  if (action === "playpause") {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!attemptMediaPlayPauseFallback()) {
+      dispatchMediaPlayPauseKey();
+    }
   }
 }
 
@@ -910,7 +958,7 @@ function syncHoverControls() {
   currentArt.querySelectorAll("[data-amazify-control]").forEach((button) => {
     const action = button.getAttribute("data-amazify-control");
     const source = findTransportControl(action);
-    button.disabled = !source;
+    button.disabled = action === "playpause" ? false : !source;
     let isActive = looksActiveControl(source);
     if (action === "shuffle") {
       const state = shuffleState(source);

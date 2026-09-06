@@ -193,7 +193,10 @@ Karaoke.Session.prototype.ensureLoad = function () {
     return session.provider.load(queries[index], requestKey).then(function (result) {
       if (!current()) return result;
       if (result && result.status === "ready") return result;
-      if (result && result.status === "no-lyrics" && index + 1 < queries.length) return loadAttempt(index + 1);
+      if (result && index + 1 < queries.length) {
+        if (result.status === "no-lyrics") return loadAttempt(index + 1);
+        if (result.status === "unavailable") return loadAttempt(index + 1);
+      }
       return result;
     });
   }

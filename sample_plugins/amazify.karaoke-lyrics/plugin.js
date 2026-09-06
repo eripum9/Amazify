@@ -569,7 +569,10 @@ Karaoke.Session.prototype.ensureLoad = function () {
     return session.provider.load(queries[index], requestKey).then(function (result) {
       if (!current()) return result;
       if (result && result.status === "ready") return result;
-      if (result && result.status === "no-lyrics" && index + 1 < queries.length) return loadAttempt(index + 1);
+      if (result && index + 1 < queries.length) {
+        if (result.status === "no-lyrics") return loadAttempt(index + 1);
+        if (result.status === "unavailable") return loadAttempt(index + 1);
+      }
       return result;
     });
   }
@@ -760,7 +763,7 @@ Karaoke.addSettings = function (Amazify, session) {
 
 // source: src/bootstrap.js
 Karaoke.bootstrap = function (Amazify) {
-  if (!Amazify.lyricsProvider || Amazify.lyricsProvider.protocolVersion !== 2) throw new Error("Karaoke Lyrics 0.2.1 requires the Amazify 1.1.2 rich-lyrics companion");
+  if (!Amazify.lyricsProvider || Amazify.lyricsProvider.protocolVersion !== 2) throw new Error("Karaoke Lyrics 0.2.2 requires the Amazify 1.1.2 rich-lyrics companion");
   const session = new Karaoke.Session(Amazify.lyricsProvider);
   const integration = new Karaoke.Integration(session);
   const releaseCapability = Amazify.capabilities.provide("amazify.karaoke-lyrics.presentation", {
