@@ -143,13 +143,13 @@
       "id": "amazify.karaoke-lyrics",
       "trust": "stock",
       "repository": "eripum9/Amazify",
-      "sourceCommit": "552501636f655a8b2d141777bd5ef9486374a352",
+      "sourceCommit": "88961972166f558e0cbfbaa7babb7daf8959904c",
       "pluginRoot": "sample_plugins/amazify.karaoke-lyrics",
       "minimumAmazifyVersion": "1.1.2",
       "manifest": {
         "id": "amazify.karaoke-lyrics",
         "name": "Karaoke Lyrics",
-        "version": "0.2.0",
+        "version": "0.2.1",
         "minimumAmazifyVersion": "1.1.2",
         "author": "Amazify",
         "type": "ui",
@@ -173,13 +173,13 @@
       "files": [
         {
           "path": "manifest.json",
-          "sha256": "e485f985bc319e793e2c82b0fec96e43e5c68d4ec952e69ca27d4fcd0ae17bea",
+          "sha256": "130bebe35ed377991885959b189920b53271a4d65704f969c56a1604f878d6a5",
           "size": 522
         },
         {
           "path": "plugin.js",
-          "sha256": "b2680622fd5dbf89f39dcb1ce5f2c24e0ab6f0b0cc0444806ab34946c9d51b03",
-          "size": 32683
+          "sha256": "428bf99287f227c1eb13adefd08e24135b50b6c623e54696391d8baaa360953a",
+          "size": 36019
         },
         {
           "path": "base.css",
