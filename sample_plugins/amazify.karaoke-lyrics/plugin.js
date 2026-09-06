@@ -374,6 +374,62 @@ Karaoke.Renderer.prototype.destroy = function () {
 };
 
 // source: src/session.js
+Karaoke.providerText = function (value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+};
+
+Karaoke.stripProviderDecorations = function (value) {
+  let text = Karaoke.providerText(value);
+  if (!text) return "";
+  text = text.replace(/\s*[\[(][^\])]*(remaster(?:ed)?|version|edit|mono|stereo|deluxe|expanded|anniversary|bonus|explicit|clean)[^\])]*[\])]/gi, " ");
+  text = text.replace(/\s+-\s*(\d{4}\s+)?(remaster(?:ed)?|version|edit|mono|stereo|live|acoustic|deluxe|expanded)\b.*$/i, "");
+  text = text.replace(/\s*\/\s*(remaster(?:ed)?|version|edit|mono|stereo|live|acoustic)\b.*$/i, "");
+  text = text.replace(/[\s\-:;,/]+$/g, "");
+  return Karaoke.providerText(text);
+};
+
+Karaoke.buildProviderQueries = function (track) {
+  const base = {
+    key: track.key,
+    title: Karaoke.providerText(track.title),
+    artists: Array.isArray(track.artists) ? track.artists.slice() : [],
+    album: Karaoke.providerText(track.album),
+    durationMs: Math.max(0, Number(track.durationMs) || 0)
+  };
+  const queries = [];
+  const seen = new Set();
+
+  function pushQuery(query) {
+    if (!query.title || !Array.isArray(query.artists) || !query.artists.length) return;
+    const normalized = {
+      key: query.key,
+      title: Karaoke.providerText(query.title),
+      artists: query.artists.map(function (item) { return Karaoke.providerText(item); }).filter(Boolean),
+      album: Karaoke.providerText(query.album),
+      durationMs: Math.max(0, Math.round(Number(query.durationMs) || 0))
+    };
+    if (!normalized.title || !normalized.artists.length) return;
+    const signature = [normalized.title, normalized.artists.join("|"), normalized.album, normalized.durationMs].join("\u001f").toLowerCase();
+    if (seen.has(signature)) return;
+    seen.add(signature);
+    queries.push(normalized);
+  }
+
+  pushQuery(base);
+
+  const strippedTitle = Karaoke.stripProviderDecorations(base.title);
+  const strippedAlbum = Karaoke.stripProviderDecorations(base.album);
+  if (strippedTitle && (strippedTitle !== base.title || strippedAlbum !== base.album)) {
+    pushQuery({ key: base.key, title: strippedTitle, artists: base.artists, album: strippedAlbum, durationMs: base.durationMs });
+  }
+
+  if (strippedTitle && base.album) {
+    pushQuery({ key: base.key, title: strippedTitle, artists: base.artists, album: "", durationMs: base.durationMs });
+  }
+
+  return queries.length ? queries : [base];
+};
+
 Karaoke.Session = function (provider) {
   this.provider = provider;
   this.track = null;
@@ -473,6 +529,8 @@ Karaoke.Session.prototype.ensureLoad = function () {
   const generation = this.generation;
   const track = this.track;
   const requestKey = "karaoke:" + generation + ":" + Math.random().toString(36).slice(2);
+  const queries = Karaoke.buildProviderQueries(track);
+  let attempts = 0;
   this.requestKey = requestKey;
   this.status = "loading";
   this.publish();
@@ -483,7 +541,11 @@ Karaoke.Session.prototype.ensureLoad = function () {
     session.loaded = true;
     session.requestKey = "";
     session.model = result && result.trackKey === track.key && result.status === "ready" ? Karaoke.normalizeRich(result.payload, track.key) : null;
-    session.providerStatus = { status: result && result.status || "unavailable", detail: result && result.detail || "" };
+    session.providerStatus = {
+      status: result && result.status || "unavailable",
+      detail: result && result.detail || "",
+      attempts: attempts
+    };
     session.status = session.model ? "ready" : "native";
     session.renderer.setModel(session.model);
     session.syncHost();
@@ -495,8 +557,7 @@ Karaoke.Session.prototype.ensureLoad = function () {
     finish({ status: "unavailable", detail: "Provider timed out" });
   }, 28000);
   // Send only matching metadata, never native lyrics, artwork or Amazon account state.
-  const query = { key: track.key, title: track.title, artists: track.artists, album: track.album, durationMs: track.durationMs };
-  Promise.resolve().then(function () {
+  function loadAttempt(index) {
     if (!current()) return;
     if (!session.visible()) {
       session.cancel();
@@ -504,7 +565,16 @@ Karaoke.Session.prototype.ensureLoad = function () {
       session.publish();
       return;
     }
-    return session.provider.load(query, requestKey);
+    attempts = index + 1;
+    return session.provider.load(queries[index], requestKey).then(function (result) {
+      if (!current()) return result;
+      if (result && result.status === "ready") return result;
+      if (result && result.status === "no-lyrics" && index + 1 < queries.length) return loadAttempt(index + 1);
+      return result;
+    });
+  }
+  Promise.resolve().then(function () {
+    return loadAttempt(0);
   }).then(finish).catch(function () { finish({ status: "unavailable" }); });
 };
 Karaoke.Session.prototype.setDefaultHost = function (container, view) {
@@ -662,7 +732,20 @@ Karaoke.addSettings = function (Amazify, session) {
       host.appendChild(clear);
       let alive = true;
       const unsubscribe = session.subscribe(function (snapshot) {
-        status.textContent = snapshot.status === "ready" ? "Rich lyrics: " + snapshot.source : snapshot.status === "loading" ? "Checking Better Lyrics and Unison" : "Native lyrics (no rich enhancement)";
+        if (snapshot.status === "ready") {
+          status.textContent = "Rich lyrics: " + snapshot.source;
+          return;
+        }
+        if (snapshot.status === "loading") {
+          status.textContent = "Checking Better Lyrics and Unison";
+          return;
+        }
+        const provider = snapshot.providerStatus || {};
+        let detail = "";
+        if (provider.status === "no-lyrics") detail = provider.detail || "No compatible rich lyrics";
+        else if (provider.status === "unavailable") detail = provider.detail || "Providers unavailable";
+        const attempts = Number(provider.attempts || 0);
+        status.textContent = "Native lyrics (no rich enhancement)" + (detail ? " - " + detail : "") + (attempts > 1 ? " (tried " + attempts + " metadata variants)" : "");
       });
       clear.addEventListener("click", function () {
         clear.disabled = true;
@@ -677,7 +760,7 @@ Karaoke.addSettings = function (Amazify, session) {
 
 // source: src/bootstrap.js
 Karaoke.bootstrap = function (Amazify) {
-  if (!Amazify.lyricsProvider || Amazify.lyricsProvider.protocolVersion !== 2) throw new Error("Karaoke Lyrics 0.2.0 requires the Amazify 1.1.2 rich-lyrics companion");
+  if (!Amazify.lyricsProvider || Amazify.lyricsProvider.protocolVersion !== 2) throw new Error("Karaoke Lyrics 0.2.1 requires the Amazify 1.1.2 rich-lyrics companion");
   const session = new Karaoke.Session(Amazify.lyricsProvider);
   const integration = new Karaoke.Integration(session);
   const releaseCapability = Amazify.capabilities.provide("amazify.karaoke-lyrics.presentation", {

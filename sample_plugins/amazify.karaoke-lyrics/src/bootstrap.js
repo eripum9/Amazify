@@ -1,5 +1,5 @@
 Karaoke.bootstrap = function (Amazify) {
-  if (!Amazify.lyricsProvider || Amazify.lyricsProvider.protocolVersion !== 2) throw new Error("Karaoke Lyrics 0.2.0 requires the Amazify 1.1.2 rich-lyrics companion");
+  if (!Amazify.lyricsProvider || Amazify.lyricsProvider.protocolVersion !== 2) throw new Error("Karaoke Lyrics 0.2.1 requires the Amazify 1.1.2 rich-lyrics companion");
   const session = new Karaoke.Session(Amazify.lyricsProvider);
   const integration = new Karaoke.Integration(session);
   const releaseCapability = Amazify.capabilities.provide("amazify.karaoke-lyrics.presentation", {
