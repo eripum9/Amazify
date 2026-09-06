@@ -5,10 +5,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PLUGIN = ROOT / "sample_plugins" / "Scrapped" / "amazify.karaoke-lyrics"
+PLUGIN = ROOT / "sample_plugins" / "amazify.karaoke-lyrics"
 SOURCES = (
     "track-adapter.js",
-    "slobjpack.js",
     "normalization.js",
     "renderer.js",
     "session.js",

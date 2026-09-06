@@ -1,0 +1,53 @@
+/* Only synchronization mechanics. Native .lyricsLine/.lyricsText rules own design. */
+.amazify-karaoke-host {
+  box-sizing: border-box;
+  color: inherit;
+  font: inherit;
+  position: absolute;
+  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.amazify-karaoke-host > ul.amazify-karaoke-scroller {
+  position: static !important;
+  transform: none !important;
+  height: auto !important;
+  min-height: 100%;
+  overflow: visible !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: var(--karaoke-leading-space, 0px) !important;
+  padding-bottom: var(--karaoke-trailing-space, 0px) !important;
+}
+.amazify-karaoke-host .amazify-karaoke-line { cursor: pointer; }
+.amazify-karaoke-line:focus-visible { outline: 1px solid currentColor; outline-offset: -1px; }
+.amazify-karaoke-line .lyricsText .amazify-karaoke-token {
+  /* Amazon's global span rule otherwise resets nested tokens to Ember Regular. */
+  font: inherit !important;
+  letter-spacing: inherit !important;
+  text-transform: inherit !important;
+  color: inherit;
+  white-space: pre-wrap;
+}
+.amazify-karaoke-line.current .amazify-karaoke-token {
+  --lyric-progress: 0%;
+  background: linear-gradient(to right, currentColor var(--lyric-progress), var(--karaoke-unsung-color, currentColor) var(--lyric-progress));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: none;
+}
+.amazify-karaoke-line.current .lyricsText { position: relative; }
+.amazify-karaoke-host::-webkit-scrollbar { width: 5px !important; background: transparent !important; }
+.amazify-karaoke-host::-webkit-scrollbar-track { background: transparent !important; }
+.amazify-karaoke-host::-webkit-scrollbar-thumb { background: transparent !important; }
+.amazify-karaoke-host.is-manual-scroll { scrollbar-width: thin !important; }
+.amazify-karaoke-host.is-manual-scroll::-webkit-scrollbar-thumb { background: currentColor !important; }

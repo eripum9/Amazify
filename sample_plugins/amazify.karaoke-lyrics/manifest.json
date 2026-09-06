@@ -1,0 +1,13 @@
+{
+  "id": "amazify.karaoke-lyrics",
+  "name": "Karaoke Lyrics",
+  "version": "0.2.0",
+  "minimumAmazifyVersion": "1.1.2",
+  "author": "Amazify",
+  "type": "ui",
+  "description": "Adds word and syllable highlighting when rich lyrics are available. Keeps your native lyrics and theme otherwise. No account required.",
+  "entry": "plugin.js",
+  "styles": ["base.css", "normal.css"],
+  "permissions": ["dom-read", "dom-write", "dom-style", "lyrics-provider"],
+  "amazonMusic": {"testedAppVersions": [], "target": "desktop"}
+}

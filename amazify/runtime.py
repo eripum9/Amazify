@@ -2888,9 +2888,8 @@ def build_runtime_script(
         }}
       }};
       api.lyricsProvider = NATIVE_FREEZE({{
+        protocolVersion: 2,
         status: () => nativeCommand("lyrics.provider.status", {{}}, 5000),
-        beginAuth: () => {{ requireActivation(); return nativeCommand("lyrics.provider.beginAuth", {{}}, 5000); }},
-        disconnect: () => {{ requireActivation(); return nativeCommand("lyrics.provider.disconnect", {{}}, 5000); }},
         load: (track, requestKey) => nativeCommand("lyrics.provider.load", {{ track: clonePlain(track || {{}}), requestKey: NATIVE_STRING(requestKey || "") }}, 30000),
         cancel: (requestKey) => nativeCommand("lyrics.provider.cancel", {{ requestKey: NATIVE_STRING(requestKey || "") }}, 5000),
         clearCache: () => {{ requireActivation(); return nativeCommand("lyrics.provider.clearCache", {{}}, 5000); }}
@@ -2921,6 +2920,10 @@ def build_runtime_script(
   function mountPlugin(plugin) {{
     const manifest = plugin.manifest;
     const pluginId = manifest.id;
+    const signature = NATIVE_JSON_STRINGIFY([manifest, plugin.source || {{}}]);
+    const mounted = NATIVE_MAP_GET(state.mountedPlugins, pluginId);
+    // State refreshes and another plugin's toggle must not reset this plugin.
+    if (mounted && mounted.signature === signature) return;
     unmountPlugin(pluginId);
 
     const assetIndex = buildPluginAssetIndex(plugin);
@@ -2964,7 +2967,7 @@ def build_runtime_script(
       throw error;
     }}
 
-    NATIVE_MAP_SET(state.mountedPlugins, pluginId, {{ cleanup }});
+    NATIVE_MAP_SET(state.mountedPlugins, pluginId, {{ cleanup, signature }});
   }}
 
   function unmountPlugin(pluginId) {{

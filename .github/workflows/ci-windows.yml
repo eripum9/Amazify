@@ -40,12 +40,12 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q amazify packaging tests
 
-      - name: Verify archived Karaoke Lyrics bundle
+      - name: Verify Karaoke Lyrics bundle and lifecycle tests
         run: |
           python scripts/build_karaoke_lyrics.py --check
-          node --check sample_plugins/Scrapped/amazify.karaoke-lyrics/plugin.js
+          node --check sample_plugins/amazify.karaoke-lyrics/plugin.js
           node --check sample_plugins/amazify.true-big-mode/plugin.js
-          node --test tests/js/karaoke_lyrics.test.js
+          node --test tests/js/*.test.js
 
       - name: Run tests with coverage
         run: python -m pytest tests --cov=amazify --cov-report=term-missing --cov-fail-under=45
@@ -54,7 +54,7 @@ jobs:
         run: python -m ruff check amazify packaging tests --select E9,F63,F7,F82
 
       - name: Pyright stable core checks
-        run: python -m pyright amazify/app_updater.py amazify/bridge.py amazify/config.py amazify/devtools.py amazify/native_bridge.py amazify/shortcuts.py amazify/window_identity.py packaging/amazify_installer.py .github/scripts/validate_candidate.py tests/test_app_updater.py tests/test_workflow_security.py
+        run: python -m pyright amazify/app_updater.py amazify/bridge.py amazify/config.py amazify/devtools.py amazify/native_bridge.py amazify/lyrics_provider.py amazify/rich_lyrics.py amazify/shortcuts.py amazify/window_identity.py packaging/amazify_installer.py .github/scripts/validate_candidate.py tests/test_app_updater.py tests/test_workflow_security.py tests/test_lyrics_provider.py tests/test_rich_lyrics.py
 
       - name: Whitespace
         run: git diff --check

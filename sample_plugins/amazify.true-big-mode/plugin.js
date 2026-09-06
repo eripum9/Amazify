@@ -11,6 +11,7 @@ const OVERLAY_CLASS = "amazify-true-big-mode-exit-overlay";
 const DYNAMIC_BG_CLASS = "amazify-true-big-mode-dynamic-bg";
 const PROGRESS_CLASS = "amazify-true-big-mode-progress";
 const NO_LYRICS_CLASS = "amazify-true-big-mode-no-lyrics";
+const LYRICS_DISABLED_CLASS = "amazify-true-big-mode-lyrics-disabled";
 const NO_LYRICS_LAYOUT_DELAY_MS = 700;
 const LYRICS_LAYOUT_CONFIRM_MS = 700;
 const NO_LYRICS_LAYOUT_TRANSITION_MS = 2000;
@@ -38,6 +39,10 @@ let intervalId = null;
 let lyricsCapability = null;
 let lyricsSnapshot = null;
 let releaseLyricsClaim = null;
+let lyricsClaimContainer = null;
+let lyricsClaimEnabled = null;
+let showLyrics = true;
+let unsubscribeSettings = null;
 let unsubscribeLyricsSnapshot = null;
 let unsubscribeLyricsCapability = null;
 let fullscreenArmedUntil = 0;
@@ -1099,11 +1104,8 @@ function setNoLyricsCenterOffset(root) {
     return;
   }
 
-  const existingX = readPixelCustomProperty(root, "--amazify-true-big-mode-no-lyrics-translate-x");
-  const existingY = readPixelCustomProperty(root, "--amazify-true-big-mode-no-lyrics-translate-y");
-  const offset = root.classList.contains(NO_LYRICS_CLASS)
-    ? { x: existingX, y: existingY }
-    : readTransformOffset(track);
+  // Use the current transform, not its destination, when a transition is interrupted.
+  const offset = readTransformOffset(track);
   const untransformedCenterX = rect.left + rect.width / 2 - offset.x;
   const untransformedCenterY = rect.top + rect.height / 2 - offset.y;
   const targetX = window.innerWidth / 2 - untransformedCenterX;
@@ -1168,6 +1170,8 @@ function releaseCurrentLyricsClaim() {
     releaseLyricsClaim();
     releaseLyricsClaim = null;
   }
+  lyricsClaimContainer = null;
+  lyricsClaimEnabled = null;
 }
 
 function setLyricsCapability(capability) {
@@ -1184,6 +1188,9 @@ function setLyricsCapability(capability) {
       scheduleSync();
     });
   }
+  // Apply a disabled presentation before a newly enabled provider starts loading.
+  const root = getBigModeRoot();
+  if (root) syncLyricsPresentation(root);
   scheduleSync();
 }
 
@@ -1197,16 +1204,27 @@ function nativeTrackHasLyrics(root) {
 
 function syncLyricsPresentation(root) {
   const wrapper = root.querySelector(`${VIEW_SELECTOR} .lyricsContainer .lyricsWrapper`);
-  if (lyricsCapability && wrapper && !releaseLyricsClaim) {
-    releaseLyricsClaim = lyricsCapability.claimHost(wrapper, {
+  root.classList.toggle(LYRICS_DISABLED_CLASS, !showLyrics);
+  // A disabled claim uses the view itself, including tracks with no native wrapper.
+  const container = showLyrics ? wrapper : root.querySelector(VIEW_SELECTOR);
+  if (container !== lyricsClaimContainer || showLyrics !== lyricsClaimEnabled) releaseCurrentLyricsClaim();
+  if (lyricsCapability && container && !releaseLyricsClaim) {
+    lyricsClaimContainer = container;
+    lyricsClaimEnabled = showLyrics;
+    releaseLyricsClaim = lyricsCapability.claimHost(container, {
       presentation: "true-big-mode",
       priority: 100,
+      enabled: showLyrics,
     });
   }
-  if (!lyricsCapability || !wrapper) releaseCurrentLyricsClaim();
+  if (!lyricsCapability || !container) releaseCurrentLyricsClaim();
 
-  if (lyricsCapability) {
-    if (!lyricsSnapshot || lyricsSnapshot.status === "idle" || lyricsSnapshot.status === "loading") return;
+  if (!showLyrics) {
+    syncNoLyricsState(root, false);
+    return;
+  }
+
+  if (lyricsCapability && lyricsSnapshot && lyricsSnapshot.enhanced && lyricsSnapshot.source !== "amazon" && lyricsSnapshot.status === "ready") {
     syncNoLyricsState(root, Boolean(lyricsSnapshot.hasLyrics));
     return;
   }
@@ -1234,6 +1252,7 @@ function syncFastBigModeState() {
 }
 
 function restorePolishedBigMode() {
+  document.querySelectorAll(`.${LYRICS_DISABLED_CLASS}`).forEach((node) => node.classList.remove(LYRICS_DISABLED_CLASS));
   stopProgressSeeking();
   if (dynamicBackground) {
     dynamicBackground.remove();
@@ -1300,6 +1319,15 @@ function scheduleSync() {
   }, 120);
 }
 
+if (Amazify.settings && typeof Amazify.settings.subscribe === "function") {
+  unsubscribeSettings = Amazify.settings.subscribe((settings) => {
+    showLyrics = settings.showLyrics !== false;
+    const root = getBigModeRoot();
+    if (root) syncLyricsPresentation(root);
+    scheduleSync();
+  });
+}
+
 unsubscribeLyricsCapability = Amazify.capabilities.subscribe(
   {
     name: "amazify.karaoke-lyrics.presentation",
@@ -1332,6 +1360,7 @@ return () => {
     window.clearInterval(intervalId);
   }
   document.removeEventListener("click", maybeArmFullscreen, true);
+  if (unsubscribeSettings) unsubscribeSettings();
   if (unsubscribeLyricsCapability) unsubscribeLyricsCapability();
   if (unsubscribeLyricsSnapshot) unsubscribeLyricsSnapshot();
   releaseCurrentLyricsClaim();

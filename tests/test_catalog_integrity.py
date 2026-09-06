@@ -11,13 +11,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class CatalogIntegrityTests(unittest.TestCase):
-    def test_scrapped_plugins_are_indexed_and_not_cataloged(self) -> None:
+    def test_scrapped_revisions_are_indexed_and_not_cataloged(self) -> None:
         archive = ROOT / "sample_plugins" / "Scrapped"
         archive_readme = (archive / "README.md").read_text(encoding="utf-8")
         catalog: dict[str, Any] = json.loads(
             (ROOT / "plugin_catalog.json").read_text(encoding="utf-8")
         )
-        catalog_ids = {plugin["id"] for plugin in catalog["plugins"]}
+        catalog_plugins = {plugin["id"]: plugin for plugin in catalog["plugins"]}
 
         archived = [
             plugin
@@ -31,7 +31,11 @@ class CatalogIntegrityTests(unittest.TestCase):
             )
             with self.subTest(plugin=manifest["id"]):
                 self.assertIn(f"]({plugin.name}/)", archive_readme)
-                self.assertNotIn(manifest["id"], catalog_ids)
+                revived = catalog_plugins.get(manifest["id"])
+                if revived:
+                    self.assertNotEqual(revived["manifest"]["version"], manifest["version"])
+                    self.assertNotIn("Scrapped", revived["pluginRoot"])
+                    self.assertIn(f"../{plugin.name}/", archive_readme)
 
     def test_catalog_hashes_match_the_pinned_git_blobs(self) -> None:
         if not (ROOT / ".git").exists():

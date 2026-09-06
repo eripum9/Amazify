@@ -1,0 +1,4 @@
+/* No selectors affect the page until a rich model is ready and attached. */
+#transportContainer .nowPlayingView .lyricsContainer .lyricsWrapper.amazify-karaoke-enhanced { overflow: hidden !important; }
+.lyricsWrapper.amazify-karaoke-enhanced [data-amazify-karaoke-native] { display: none !important; }
+.nowPlayingView.amazify-karaoke-provider-lyrics [data-amazify-karaoke-placeholder] { display: none !important; }

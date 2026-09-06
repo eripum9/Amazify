@@ -272,6 +272,7 @@ class PluginManagerTests(unittest.TestCase):
                 {
                     "amazify.true-big-mode",
                     "amazify.theme.signal-studio",
+                    "amazify.karaoke-lyrics",
                 },
             )
             self.assertTrue(
@@ -296,6 +297,7 @@ class PluginManagerTests(unittest.TestCase):
                 {
                     "amazify.true-big-mode",
                     "amazify.theme.signal-studio",
+                    "amazify.karaoke-lyrics",
                 },
             )
             self.assertTrue(all(not package.enabled for package in packages))
@@ -313,7 +315,7 @@ class PluginManagerTests(unittest.TestCase):
                 {"primaryColor", "secondaryColor"},
             )
             self.assertIn("Amazify.settings.subscribe", signal_studio["source"]["entry"])
-            self.assertFalse(
+            self.assertTrue(
                 any(
                     plugin["manifest"]["id"] == "amazify.karaoke-lyrics"
                     for plugin in snapshot

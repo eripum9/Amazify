@@ -18,6 +18,7 @@ LOG = logging.getLogger(__name__)
 BINDING_NAME = "AmazifyNativeCommand"
 MAX_NATIVE_REQUEST_BYTES = 16 * 1024
 MAX_NATIVE_RESPONSE_BYTES = 4 * 1024 * 1024
+MAX_PENDING_LYRICS_LOADS = 8
 ALLOWED_COMMANDS = frozenset(
     {
         "state.get",
@@ -30,8 +31,6 @@ ALLOWED_COMMANDS = frozenset(
         "app.update.check",
         "app.update.install",
         "lyrics.provider.status",
-        "lyrics.provider.beginAuth",
-        "lyrics.provider.disconnect",
         "lyrics.provider.load",
         "lyrics.provider.cancel",
         "lyrics.provider.clearCache",
@@ -59,6 +58,7 @@ class NativeBindingBridge:
         self._operation_lock = threading.RLock()
         self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="AmazifyLyrics")
         self._futures: set[Future[dict[str, Any]]] = set()
+        self._loads: dict[str, threading.Event] = {}
         self._closed = False
 
     @property
@@ -151,12 +151,14 @@ class NativeBindingBridge:
                 raise LyricsProviderError("Lyrics provider is unavailable")
             if name == "lyrics.provider.status":
                 return self.lyrics_provider.status()
-            if name == "lyrics.provider.beginAuth":
-                return self.lyrics_provider.begin_auth()
-            if name == "lyrics.provider.disconnect":
-                return self.lyrics_provider.disconnect()
             if name == "lyrics.provider.cancel":
-                return self.lyrics_provider.cancel(str(payload.get("requestKey", "")))
+                key = str(payload.get("requestKey", ""))
+                pending = self._loads.get(key)
+                if pending is not None:
+                    pending.set()
+                result = self.lyrics_provider.cancel(key)
+                result["canceled"] = bool(pending is not None or result.get("canceled"))
+                return result
             if name == "lyrics.provider.clearCache":
                 return self.lyrics_provider.clear_cache()
         raise PluginError(f"Native command not allowed: {name}")
@@ -208,21 +210,30 @@ class NativeBindingBridge:
             raise LyricsProviderError("Lyrics request id is missing")
         if self.lyrics_provider is None:
             raise LyricsProviderError("Lyrics provider is unavailable")
-        if self._closed:
-            raise LyricsProviderError("Native bridge is closed")
         track = payload.get("track", {})
         if not isinstance(track, dict):
             raise TypeError("Lyrics track payload must be an object")
         request_key = str(payload.get("requestKey", ""))
-        future = self._executor.submit(self.lyrics_provider.load, track, request_key)
-        self._futures.add(future)
+        if not request_key or len(request_key) > 256:
+            raise LyricsProviderError("Lyrics request key is invalid")
+        with self._operation_lock:
+            if self._closed:
+                raise LyricsProviderError("Native bridge is closed")
+            if len(self._futures) >= MAX_PENDING_LYRICS_LOADS:
+                raise LyricsProviderError("Lyrics request capacity is busy")
+            if request_key in self._loads:
+                raise LyricsProviderError("Lyrics request key is already pending")
+            canceled = threading.Event()
+            self._loads[request_key] = canceled
+            future = self._executor.submit(self.lyrics_provider.load, track, request_key, cancel_event=canceled)
+            self._futures.add(future)
 
         def complete(done: Future[dict[str, Any]]) -> None:
-            self._futures.discard(done)
-            if self._closed:
-                return
-            if done.cancelled():
-                return
+            with self._operation_lock:
+                self._futures.discard(done)
+                self._loads.pop(request_key, None)
+                if self._closed or canceled.is_set() or done.cancelled():
+                    return
             try:
                 result = done.result()
             except (LyricsProviderError, TypeError, ValueError) as exc:
@@ -235,10 +246,13 @@ class NativeBindingBridge:
         future.add_done_callback(complete)
 
     def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        futures = list(self._futures)
+        with self._operation_lock:
+            if self._closed:
+                return
+            self._closed = True
+            futures = list(self._futures)
+            for canceled in self._loads.values():
+                canceled.set()
         for future in futures:
             future.cancel()
         if self.lyrics_provider is not None:

@@ -6,9 +6,8 @@ their own network behavior, which is separate from the companion's requests.
 
 ## Runtime Remote Endpoints
 
-The Spotify and Spicy Lyrics rows describe dormant support retained for the
-archived Karaoke Lyrics prototype. No active catalog plugin can invoke those
-endpoints.
+Karaoke Lyrics 0.2.0 uses public Better Lyrics and Unison endpoints. The archived
+Spotify authentication module is dormant; no active runtime path invokes it.
 
 | Destination | Purpose | Authentication and validation | Limit |
 | --- | --- | --- | --- |
@@ -16,10 +15,8 @@ endpoints.
 | `https://github.com/eripum9/Amazify/releases/download/v<version>/AmazifySetup.exe` | Download a user-approved application update | HTTPS, exact repository/tag/asset path, at most three validated redirects to GitHub release-asset hosts, advertised size, mandatory GitHub SHA-256 digest | 256 MiB installer |
 | `https://raw.githubusercontent.com/eripum9/Amazify/main/plugin_catalog.json` | Fetch the official catalog update index when the store opens | HTTPS, exact host/repository/path, bounded response, schema validation | 1 MiB response |
 | `https://raw.githubusercontent.com/<owner>/<repo>/<40-char-commit>/<path>` | Fetch a catalog-pinned manifest, script, stylesheet, font, image, or other declared asset | HTTPS, catalog-approved repository and commit, normalized path, advertised byte size, SHA-256 | 2 MiB code/config file; 5 MiB declared asset |
-| `https://accounts.spotify.com/authorize` | Start the optional Karaoke Lyrics Spotify PKCE connection | System browser, Authorization Code with PKCE, random state/verifier, no scopes, loopback IP callback | User-initiated only |
-| `https://accounts.spotify.com/api/token` | Exchange or refresh the optional Spotify token | Exact HTTPS host/path, no redirects or proxies, strict form request and JSON response | 64 KiB response |
-| `https://api.spotify.com/v1/search` | Resolve validated Amazon track metadata to one unambiguous Spotify track | Exact HTTPS host/path, in-memory bearer token, strict metadata and duration checks | 2 MiB response |
-| `https://api.spicylyrics.org/query` | Request optional word or syllable lyrics | Exact HTTPS host/path, no redirects or proxies, `X-mode: 2`, bounded retries and response; receives the no-scope Spotify bearer token | 2 MiB response |
+| `https://lyrics-api.boidu.dev/getLyrics` | Optional rich lyrics; sends title, artist, album and duration | Public GET without credentials; exact HTTPS host/path, no redirects/proxies, strict JSON and bounded TTML | 1 MiB response; 8-second socket timeout |
+| `https://unison.boidu.dev/lyrics` | Second rich-lyrics provider; sends the same metadata | Public GET without credentials; exact HTTPS host/path, no redirects/proxies, strict metadata match and bounded TTML | 1 MiB response; shared 24-second load deadline |
 
 Catalog and plugin requests allow at most three redirects. Every hop and the
 final URL must satisfy the same HTTPS, host, repository, commit, and path policy.
@@ -90,13 +87,14 @@ commands. They are not exposed by the localhost HTTP bridge or the plugin bridge
 capability. Installer launch additionally requires a trusted user click in the
 injected Settings interface.
 
-Archived Karaoke Lyrics provider commands are also native-binding-only and are
+Karaoke Lyrics provider commands are also native-binding-only and are
 reserved for the exact `amazify.karaoke-lyrics` plugin ID. Provider loads run on a
-bounded native executor and carry cancelable request keys. Access tokens stay in
-native memory; refresh tokens are encrypted with Windows DPAPI under
-`%APPDATA%\Amazify`. Tokens, OAuth codes, states, and PKCE verifiers are never
-written to the lyrics cache or logs. The active catalog does not distribute a
-plugin with this capability.
+two-worker executor with at most eight outstanding loads and carry cancelable
+request keys. Cancellation persists while a request is queued. No Spotify or
+Amazon credentials enter the provider chain or lyrics cache. The frozen plugin
+API exposes status, load, cancel and clearCache, not arbitrary fetch or OAuth.
+See [Karaoke provider details](karaoke-lyrics-provider.md) for cache and parser
+limits and public-service availability restrictions.
 
 ## Plugin Network Activity
 

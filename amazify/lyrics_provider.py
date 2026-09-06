@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import http.client
 import json
-import random
+import math
 import re
 import threading
 import time
@@ -13,14 +15,17 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .lyrics_cache import LyricsCache
-from .spotify_auth import SpotifyAuth, SpotifyAuthError
+from .rich_lyrics import RichLyricsError, parse_ttml, validate_model
 
 
-SPOTIFY_SEARCH_URL = "https://api.spotify.com/v1/search"
-SPICY_QUERY_URL = "https://api.spicylyrics.org/query"
-SPICY_VERSION = "1.1"
-RESOLVER_VERSION = 1
-MAX_NETWORK_BYTES = 2 * 1024 * 1024
+BETTER_LYRICS_URL = "https://lyrics-api.boidu.dev/getLyrics"
+UNISON_URL = "https://unison.boidu.dev/lyrics"
+PROVIDER_VERSION = "native-rich-v1"
+MAX_NETWORK_BYTES = 1 * 1024 * 1024
+MAX_REQUEST_SECONDS = 24.0
+REQUEST_TIMEOUT_SECONDS = 8.0
+MAX_CONCURRENT_REQUESTS = 2
+MIN_BETTER_SCORE = 80.0
 QUALIFIERS = frozenset(
     {"live", "remix", "acoustic", "instrumental", "karaoke", "remaster", "sped up", "slowed"}
 )
@@ -31,6 +36,18 @@ class LyricsProviderError(RuntimeError):
 
 
 class LyricsUnavailable(LyricsProviderError):
+    pass
+
+
+class _Canceled(LyricsUnavailable):
+    pass
+
+
+class _ProviderMiss(Exception):
+    pass
+
+
+class _ProviderMalformed(Exception):
     pass
 
 
@@ -47,21 +64,30 @@ class _RejectRedirects(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def _strip_explicit(value: Any) -> str:
+    text = str(value or "")
+    text = re.sub(r"\s*[\[(]\s*explicit\s*[\])]", " ", text, flags=re.IGNORECASE)
+    return " ".join(text.split())
+
+
 def _normalize(value: Any) -> str:
-    text = unicodedata.normalize("NFKD", str(value or "")).casefold()
-    text = re.sub(r"\([^)]*\)|\[[^]]*\]", " ", text)
-    return " ".join(re.findall(r"[a-z0-9]+", text))
+    text = unicodedata.normalize("NFKD", _strip_explicit(value)).casefold()
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    return " ".join(re.findall(r"[^\W_]+", text, flags=re.UNICODE))
 
 
 def _qualifiers(value: Any) -> set[str]:
     folded = unicodedata.normalize("NFKD", str(value or "")).casefold()
-    return {item for item in QUALIFIERS if item in folded}
+    return {
+        item for item in QUALIFIERS
+        if re.search(rf"(?<![a-z0-9]){re.escape(item)}(?![a-z0-9])", folded)
+    }
 
 
 def _primary_artist(value: Any) -> str:
     if isinstance(value, list):
         value = value[0] if value else ""
-    return _normalize(str(value or "").split(",")[0].split("&")[0])
+    return _normalize(value)
 
 
 def validate_track(raw: dict[str, Any]) -> dict[str, Any]:
@@ -88,35 +114,71 @@ def validate_track(raw: dict[str, Any]) -> dict[str, Any]:
     return track
 
 
+def _metadata_fingerprint(track: dict[str, Any]) -> str:
+    relevant = {
+        "key": track["key"],
+        "title": track["title"],
+        "artists": track["artists"],
+        "album": track["album"],
+        "durationMs": track["durationMs"],
+        "isrc": track["isrc"],
+        "providerVersion": PROVIDER_VERSION,
+    }
+    encoded = json.dumps(relevant, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _metadata_matches(track: dict[str, Any], data: dict[str, Any]) -> bool:
+    title = data.get("song", data.get("title", ""))
+    artist = data.get("artist", data.get("artists", ""))
+    if not title or _normalize(title) != _normalize(track["title"]):
+        return False
+    if not artist or _primary_artist(artist) != _primary_artist(track["artists"]):
+        return False
+    if _qualifiers(title) != _qualifiers(track["title"]):
+        return False
+    album = data.get("album", "")
+    if track["album"] and album and _normalize(album) != _normalize(track["album"]):
+        return False
+    if track["durationMs"] and data.get("duration") not in (None, ""):
+        try:
+            duration = float(data["duration"])
+            if not math.isfinite(duration) or abs(duration - track["durationMs"] / 1000) > 5:
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
+
+
 class LyricsProviderService:
     def __init__(
         self,
         state_dir: Path,
         *,
-        auth: SpotifyAuth | None = None,
         cache: LyricsCache | None = None,
         opener: urllib.request.OpenerDirector | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        self.auth = auth or SpotifyAuth(state_dir)
         self.cache = cache or LyricsCache(state_dir / "lyrics-cache.sqlite3")
         self._opener = opener or urllib.request.build_opener(
             urllib.request.ProxyHandler({}), _RejectRedirects()
         )
         self._sleep = sleep
+        self._clock = clock
+        self._network_slots = threading.BoundedSemaphore(MAX_CONCURRENT_REQUESTS)
         self._lock = threading.RLock()
         self._requests: dict[str, threading.Event] = {}
         self._closed = False
+        self._cache_closed = False
 
     def status(self) -> dict[str, Any]:
-        status = self.auth.status()
-        return {"ok": True, "provider": "spicy-lyrics", "spotify": status}
-
-    def begin_auth(self) -> dict[str, Any]:
-        return {"ok": True, "provider": "spicy-lyrics", "spotify": self.auth.begin_auth()}
-
-    def disconnect(self) -> dict[str, Any]:
-        return {"ok": True, "provider": "spicy-lyrics", "spotify": self.auth.disconnect()}
+        return {
+            "ok": True,
+            "provider": "better-lyrics",
+            "providers": ["better-lyrics", "unison"],
+            "authenticated": False,
+        }
 
     def clear_cache(self) -> dict[str, Any]:
         self.cache.clear()
@@ -124,17 +186,17 @@ class LyricsProviderService:
 
     def cancel(self, request_key: str) -> dict[str, Any]:
         with self._lock:
-            event = self._requests.get(request_key)
+            event = self._requests.get(str(request_key or ""))
             if event is not None:
                 event.set()
         return {"ok": True, "canceled": bool(event)}
 
-    def load(self, raw_track: dict[str, Any], request_key: str) -> dict[str, Any]:
+    def load(self, raw_track: dict[str, Any], request_key: str, *, cancel_event: threading.Event | None = None) -> dict[str, Any]:
         track = validate_track(raw_track)
         request_key = str(request_key or "").strip()
         if not request_key or len(request_key) > 256:
             raise LyricsProviderError("Lyrics request key is invalid")
-        canceled = threading.Event()
+        canceled = cancel_event if cancel_event is not None else threading.Event()
         with self._lock:
             if self._closed:
                 raise LyricsProviderError("Lyrics provider is closed")
@@ -142,44 +204,44 @@ class LyricsProviderService:
             if previous is not None:
                 previous.set()
             self._requests[request_key] = canceled
+        fingerprint = _metadata_fingerprint(track)
+        deadline = self._clock() + MAX_REQUEST_SECONDS
         try:
-            spotify_id = self._resolve(track, canceled)
+            cached = self._cached_result(track, fingerprint)
             self._raise_if_canceled(canceled)
-            if not spotify_id:
-                return {"ok": True, "status": "unresolved", "trackKey": track["key"]}
-            cached = self.cache.get_lyrics("spicy-lyrics", spotify_id)
-            if cached is not None:
-                return {
-                    "ok": True,
-                    "status": cached["status"],
-                    "trackKey": track["key"],
-                    "spotifyTrackId": spotify_id,
-                    "payload": cached.get("payload"),
-                    "cached": True,
-                }
-            payload = self._load_spicy(spotify_id, canceled)
+            for result in cached:
+                if result["status"] == "ready":
+                    return result
+            outcomes: list[tuple[str, str]] = [(item["source"], item["status"]) for item in cached]
+            for provider in ("better-lyrics", "unison"):
+                self._raise_if_canceled(canceled)
+                if any(item["source"] == provider for item in cached):
+                    continue
+                try:
+                    payload = self._load_provider(provider, track, canceled, deadline)
+                except _ProviderMiss:
+                    self._raise_if_canceled(canceled)
+                    outcomes.append((provider, "no-lyrics"))
+                    self.cache.store_no_lyrics(provider, fingerprint, f"{PROVIDER_VERSION}:{fingerprint}")
+                    continue
+                except (_ProviderMalformed, LyricsUnavailable):
+                    self._raise_if_canceled(canceled)
+                    outcomes.append((provider, "unavailable"))
+                    continue
+                self._raise_if_canceled(canceled)
+                self.cache.store_lyrics(provider, fingerprint, payload, f"{PROVIDER_VERSION}:{fingerprint}")
+                return self._result("ready", track, provider, payload, False)
             self._raise_if_canceled(canceled)
-            if payload is None:
-                self.cache.store_no_lyrics("spicy-lyrics", spotify_id, SPICY_VERSION)
-                return {
-                    "ok": True,
-                    "status": "no-lyrics",
-                    "trackKey": track["key"],
-                    "spotifyTrackId": spotify_id,
-                }
-            self.cache.store_lyrics("spicy-lyrics", spotify_id, payload, SPICY_VERSION)
-            return {
-                "ok": True,
-                "status": "ready",
-                "trackKey": track["key"],
-                "spotifyTrackId": spotify_id,
-                "payload": payload,
-                "cached": False,
-            }
-        except SpotifyAuthError as exc:
-            return {"ok": True, "status": "authentication-required", "trackKey": track["key"], "detail": str(exc)}
-        except LyricsUnavailable as exc:
-            return {"ok": True, "status": "unavailable", "trackKey": track["key"], "detail": str(exc)}
+            status = "no-lyrics" if outcomes and all(status == "no-lyrics" for _, status in outcomes) else "unavailable"
+            source = next((source for source, item_status in outcomes if item_status == status), "better-lyrics")
+            detail = "No compatible rich lyrics" if status == "no-lyrics" else "Providers unavailable"
+            cached_outcome = any(
+                item["source"] == source and item["status"] == status and item["cached"]
+                for item in cached
+            )
+            return self._result(status, track, source, None, cached_outcome, detail)
+        except _Canceled as exc:
+            return self._result("unavailable", track, "better-lyrics", None, False, str(exc))
         finally:
             should_finish = False
             with self._lock:
@@ -195,184 +257,231 @@ class LyricsProviderService:
             pending = list(self._requests.values())
         for event in pending:
             event.set()
-        self.auth.close()
         if not pending:
             self.finish_close()
 
     def finish_close(self) -> None:
-        self.cache.close()
+        with self._lock:
+            if not self._cache_closed:
+                self._cache_closed = True
+                self.cache.close()
 
-    def _resolve(self, track: dict[str, Any], canceled: threading.Event) -> str:
-        cached = self.cache.get_mapping(track["key"], RESOLVER_VERSION)
-        if cached:
-            return str(cached["spotifyTrackId"])
-        token = self.auth.access_token()
-        refreshed_search_token = False
-        queries: list[tuple[str, str]] = []
-        if track["isrc"]:
-            queries.append(("isrc", f'isrc:"{track["isrc"]}"'))
-        title = track["title"]
-        artist = track["artists"][0]
-        queries.append(("exact", f'track:"{title}" artist:"{artist}"'))
-        if track["album"]:
-            queries.append(("album", f'track:"{title}" artist:"{artist}" album:"{track["album"]}"'))
-        queries.append(("duration", f'{title} {artist}'))
-        for evidence_type, query in queries:
-            self._raise_if_canceled(canceled)
-            try:
-                candidates = self._spotify_search(query, token)
-            except urllib.error.HTTPError as exc:
-                if exc.code != 401 or refreshed_search_token:
-                    raise
-                refreshed_search_token = True
-                self.auth.invalidate_access_token()
-                token = self.auth.access_token(force_refresh=True)
-                candidates = self._spotify_search(query, token)
-            matches = [item for item in candidates if self._candidate_matches(track, item, evidence_type == "isrc")]
-            if len(matches) != 1:
+    def _cached_result(self, track: dict[str, Any], fingerprint: str) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        version = f"{PROVIDER_VERSION}:{fingerprint}"
+        for provider in ("better-lyrics", "unison"):
+            cached = self.cache.get_lyrics(provider, fingerprint)
+            if cached is None or cached.get("providerVersion") != version:
                 continue
-            spotify_id = str(matches[0].get("id", ""))
-            if spotify_id:
-                self.cache.store_mapping(
-                    track["key"], spotify_id, 1.0,
-                    {"method": evidence_type}, RESOLVER_VERSION,
-                )
-                return spotify_id
-        return ""
+            status = str(cached.get("status", ""))
+            payload = cached.get("payload")
+            if status == "ready":
+                if not isinstance(payload, dict) or not validate_model(payload) or payload.get("trackKey") != track["key"]:
+                    continue
+                results.append(self._result("ready", track, provider, payload, True))
+            elif status == "no-lyrics":
+                results.append(self._result("no-lyrics", track, provider, None, True))
+        return results
 
-    def _candidate_matches(self, track: dict[str, Any], item: dict[str, Any], isrc_query: bool) -> bool:
-        if not isinstance(item, dict):
-            return False
-        candidate_title = str(item.get("name", ""))
-        if _normalize(candidate_title) != _normalize(track["title"]):
-            return False
-        track_qualifiers = _qualifiers(track["title"])
-        if _qualifiers(candidate_title) != track_qualifiers:
-            return False
-        artists = item.get("artists", [])
-        candidate_artist = artists[0].get("name", "") if isinstance(artists, list) and artists and isinstance(artists[0], dict) else ""
-        if _primary_artist(candidate_artist) != _primary_artist(track["artists"]):
-            return False
-        external_ids = item.get("external_ids", {}) if isinstance(item.get("external_ids"), dict) else {}
-        if isrc_query and track["isrc"]:
-            return str(external_ids.get("isrc", "")).casefold() == track["isrc"].casefold()
-        try:
-            difference = abs(int(item.get("duration_ms", 0)) - track["durationMs"])
-        except (TypeError, ValueError):
-            return False
-        return bool(track["durationMs"] and difference <= 5000)
+    @staticmethod
+    def _result(
+        status: str,
+        track: dict[str, Any],
+        source: str,
+        payload: dict[str, Any] | None,
+        cached: bool,
+        detail: str | None = None,
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "ok": True,
+            "status": status,
+            "trackKey": track["key"],
+            "payload": payload,
+            "source": source,
+            "cached": cached,
+        }
+        if detail:
+            result["detail"] = detail
+        return result
 
-    def _spotify_search(self, query: str, token: str) -> list[dict[str, Any]]:
-        params = urllib.parse.urlencode({"q": query, "type": "track", "limit": "10"})
-        payload, _ = self._json_request(
-            f"{SPOTIFY_SEARCH_URL}?{params}",
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
-            timeout=8,
-        )
-        tracks = payload.get("tracks", {}) if isinstance(payload, dict) else {}
-        items = tracks.get("items", []) if isinstance(tracks, dict) else []
-        return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
-
-    def _load_spicy(self, spotify_id: str, canceled: threading.Event) -> Any | None:
-        refreshed = False
-        delays = [0, 1, 2, 4, 8]
-        for delay in delays:
-            if delay:
-                self._sleep(delay + random.uniform(0, min(0.25, delay / 10)))
-            self._raise_if_canceled(canceled)
-            token = self.auth.access_token(force_refresh=refreshed)
-            body = json.dumps({
-                "queries": [{"operation": "lyrics", "variables": {"id": spotify_id, "auth": "SpicyLyrics-WebAuth"}}],
-                "client": {"version": SPICY_VERSION},
-            }, separators=(",", ":")).encode("utf-8")
+    def _load_provider(
+        self,
+        provider: str,
+        track: dict[str, Any],
+        canceled: threading.Event,
+        deadline: float,
+    ) -> dict[str, Any]:
+        if provider == "better-lyrics":
+            params = {"s": _strip_explicit(track["title"]), "a": _strip_explicit(track["artists"][0])}
+            if track["album"]:
+                params["al"] = _strip_explicit(track["album"])
+            if track["durationMs"]:
+                params["d"] = f"{track['durationMs'] / 1000:g}"
+            payload = self._get_json(BETTER_LYRICS_URL, params, canceled, deadline)
+            if not isinstance(payload.get("ttml"), str) or not payload["ttml"].strip():
+                raise _ProviderMiss("Better Lyrics has no TTML")
+            score = payload.get("score")
+            if not isinstance(score, (int, float)) or isinstance(score, bool) or not math.isfinite(score):
+                raise _ProviderMalformed("Better Lyrics score is malformed")
+            if not MIN_BETTER_SCORE <= score <= 100:
+                raise _ProviderMiss("Better Lyrics confidence is low")
             try:
-                payload, status = self._json_request(
-                    SPICY_QUERY_URL,
-                    data=body,
-                    headers={
-                        "Content-Type": "application/json",
-                        "Accept": "application/json",
-                        "SpicyLyrics-Version": SPICY_VERSION,
-                        "SpicyLyrics-WebAuth": f"Bearer {token}",
-                        "X-mode": "2",
-                    },
-                    timeout=10,
+                return parse_ttml(payload["ttml"], source=provider, track_key=track["key"])
+            except RichLyricsError as exc:
+                raise _ProviderMalformed(str(exc)) from exc
+        if provider == "unison":
+            params = {"song": _strip_explicit(track["title"]), "artist": _strip_explicit(track["artists"][0])}
+            if track["album"]:
+                params["album"] = _strip_explicit(track["album"])
+            if track["durationMs"]:
+                params["duration"] = f"{track['durationMs'] / 1000:g}"
+            response = self._get_json(UNISON_URL, params, canceled, deadline)
+            if response.get("success") is not True or not isinstance(response.get("data"), dict):
+                raise _ProviderMiss("Unison has no lyrics")
+            data = response["data"]
+            if not _metadata_matches(track, data):
+                raise _ProviderMalformed("Unison metadata did not match")
+            confidence = data.get("confidence")
+            if isinstance(confidence, str) and confidence.casefold() == "low":
+                raise _ProviderMiss("Unison confidence is low")
+            lyrics = data.get("lyrics")
+            format_name = str(data.get("format", "")).casefold()
+            sync_type = str(data.get("syncType", "")).casefold()
+            if not isinstance(lyrics, str) or format_name not in {"ttml", "xml"} or sync_type not in {"", "richsync"}:
+                raise _ProviderMiss("Unison response is not rich TTML")
+            try:
+                return parse_ttml(
+                    lyrics,
+                    source=provider,
+                    track_key=track["key"],
+                    language=str(data.get("language", "")) or None,
                 )
+            except RichLyricsError as exc:
+                raise _ProviderMalformed(str(exc)) from exc
+        raise LyricsProviderError("Unknown lyrics provider")
+
+    def _get_json(
+        self,
+        endpoint: str,
+        params: dict[str, str],
+        canceled: threading.Event,
+        deadline: float,
+    ) -> dict[str, Any]:
+        query = urllib.parse.urlencode(params, doseq=False, safe="")
+        url = f"{endpoint}?{query}"
+        for attempt in range(2):
+            self._raise_if_canceled(canceled)
+            try:
+                return self._json_request(url, canceled=canceled, deadline=deadline)
             except urllib.error.HTTPError as exc:
-                status = exc.code
-                payload = {}
-                if status == 401 and not refreshed:
-                    refreshed = True
-                    self.auth.invalidate_access_token()
-                    continue
-                if status == 404:
-                    return None
-                if status == 503:
-                    continue
-                if status == 403:
-                    raise LyricsUnavailable("Spotify user is not allowlisted for the beta provider") from exc
-                if status == 429:
-                    retry_after = min(8, max(1, int(exc.headers.get("Retry-After", "1") or 1)))
+                if exc.code == 404:
+                    raise _ProviderMiss("Provider has no lyrics") from exc
+                if exc.code == 401:
+                    raise LyricsUnavailable("Provider requires authentication") from exc
+                if exc.code == 429 and attempt == 0:
+                    retry_after = 0.5
+                    try:
+                        headers = exc.headers or {}
+                        retry_after = min(1.0, max(0.0, float(headers.get("Retry-After", "0.5"))))
+                    except (TypeError, ValueError):
+                        pass
                     self._sleep(retry_after)
                     continue
-                raise LyricsUnavailable(f"Lyrics provider failed ({status})") from exc
-            query = payload.get("queries", [None])[0] if isinstance(payload, dict) else None
-            result = query.get("result", query) if isinstance(query, dict) else None
-            try:
-                query_status = int(result.get("httpStatus", status)) if isinstance(result, dict) else status
-            except (TypeError, ValueError) as exc:
-                raise LyricsProviderError("Lyrics provider response status was malformed") from exc
-            if query_status == 404:
-                return None
-            if query_status != 200 or not isinstance(result, dict) or "data" not in result:
-                raise LyricsUnavailable("Lyrics provider returned no compatible lyrics")
-            return result["data"]
-        raise LyricsUnavailable("Lyrics provider is temporarily unavailable")
+                if 500 <= exc.code <= 599:
+                    raise LyricsUnavailable(f"Provider failed ({exc.code})") from exc
+                raise _ProviderMalformed(f"Provider returned HTTP {exc.code}") from exc
+        raise LyricsUnavailable("Provider rate limit persisted")
 
-    def _json_request(
-        self,
-        url: str,
-        *,
-        data: bytes | None = None,
-        headers: dict[str, str],
-        timeout: float,
-    ) -> tuple[dict[str, Any], int]:
+    def _json_request(self, url: str, *, canceled: threading.Event, deadline: float) -> dict[str, Any]:
         parsed = urllib.parse.urlsplit(url)
-        allowed = {
-            ("api.spotify.com", "/v1/search"),
-            ("api.spicylyrics.org", "/query"),
-        }
-        if parsed.scheme != "https" or (parsed.hostname or "", parsed.path) not in allowed or parsed.port not in (None, 443) or parsed.username or parsed.password:
-            raise LyricsProviderError("Provider endpoint is not allowed")
-        request = urllib.request.Request(url, data=data, headers=headers, method="POST" if data is not None else "GET")
         try:
-            response = self._opener.open(request, timeout=timeout)
+            port = parsed.port
+        except ValueError as exc:
+            raise LyricsProviderError("Provider endpoint is not allowed") from exc
+        allowed = {("lyrics-api.boidu.dev", "/getLyrics"), ("unison.boidu.dev", "/lyrics")}
+        if (
+            parsed.scheme != "https"
+            or (parsed.hostname or "", parsed.path) not in allowed
+            or port not in (None, 443)
+            or parsed.username
+            or parsed.password
+            or parsed.fragment
+        ):
+            raise LyricsProviderError("Provider endpoint is not allowed")
+        remaining = deadline - self._clock()
+        if remaining <= 0:
+            raise LyricsUnavailable("Provider request deadline exceeded")
+        acquired = self._network_slots.acquire(timeout=min(remaining, REQUEST_TIMEOUT_SECONDS))
+        if not acquired:
+            raise LyricsUnavailable("Provider request capacity is busy")
+        try:
+            self._raise_if_canceled(canceled)
+            remaining = deadline - self._clock()
+            if remaining <= 0:
+                raise LyricsUnavailable("Provider request deadline exceeded")
+            request = urllib.request.Request(
+                url,
+                headers={"Accept": "application/json", "User-Agent": "Amazify-Karaoke-Lyrics/0.2"},
+                method="GET",
+            )
+            response = self._opener.open(request, timeout=min(REQUEST_TIMEOUT_SECONDS, remaining))
             with response:
                 if response.geturl() != url:
-                    raise LyricsProviderError("Provider endpoint redirected unexpectedly")
-                content_type = str(response.headers.get("Content-Type", "")).lower()
-                if "application/json" not in content_type:
-                    raise LyricsProviderError("Provider returned an invalid content type")
+                    raise _ProviderMalformed("Provider endpoint redirected unexpectedly")
+                content_type = str(response.headers.get("Content-Type", "")).casefold()
+                if content_type.split(";", 1)[0].strip() != "application/json":
+                    raise _ProviderMalformed("Provider returned an invalid content type")
                 length = response.headers.get("Content-Length")
-                if length and int(length) > MAX_NETWORK_BYTES:
-                    raise LyricsProviderError("Provider response was too large")
-                raw = response.read(MAX_NETWORK_BYTES + 1)
-                status = int(getattr(response, "status", 200))
+                try:
+                    if length and int(length) > MAX_NETWORK_BYTES:
+                        raise _ProviderMalformed("Provider response was too large")
+                except ValueError as exc:
+                    raise _ProviderMalformed("Provider content length was malformed") from exc
+                chunks: list[bytes] = []
+                total = 0
+                while True:
+                    self._raise_if_canceled(canceled)
+                    if self._clock() >= deadline:
+                        raise LyricsUnavailable("Provider response deadline exceeded")
+                    read = getattr(response, "read1", response.read)
+                    chunk = read(min(16 * 1024, MAX_NETWORK_BYTES + 1 - total))
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    total += len(chunk)
+                    if total > MAX_NETWORK_BYTES:
+                        raise _ProviderMalformed("Provider response was too large")
+                raw = b"".join(chunks)
         except urllib.error.HTTPError:
             raise
-        except (OSError, urllib.error.URLError, ValueError) as exc:
+        except (_ProviderMalformed, _Canceled):
+            raise
+        except (OSError, urllib.error.URLError, http.client.HTTPException) as exc:
             raise LyricsUnavailable("Provider network request failed") from exc
-        if len(raw) > MAX_NETWORK_BYTES:
-            raise LyricsProviderError("Provider response was too large")
+        finally:
+            self._network_slots.release()
         try:
-            payload = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise LyricsProviderError("Provider response was malformed") from exc
+            def reject_constant(value: str) -> None:
+                raise ValueError("Non-finite JSON value")
+            payload = json.loads(raw.decode("utf-8"), parse_constant=reject_constant)
+        except (UnicodeDecodeError, ValueError, RecursionError) as exc:
+            raise _ProviderMalformed("Provider response was malformed") from exc
         if not isinstance(payload, dict):
-            raise LyricsProviderError("Provider response was malformed")
-        return payload, status
+            raise _ProviderMalformed("Provider response was malformed")
+        stack: list[tuple[Any, int]] = [(payload, 0)]
+        nodes = 0
+        while stack:
+            value, depth = stack.pop()
+            nodes += 1
+            if nodes > 10000 or depth > 32:
+                raise _ProviderMalformed("Provider JSON exceeded structural limits")
+            if isinstance(value, dict):
+                stack.extend((child, depth + 1) for child in value.values())
+            elif isinstance(value, list):
+                stack.extend((child, depth + 1) for child in value)
+        return payload
 
     @staticmethod
     def _raise_if_canceled(event: threading.Event) -> None:
         if event.is_set():
-            raise LyricsUnavailable("Lyrics request was canceled")
+            raise _Canceled("Lyrics request was canceled")

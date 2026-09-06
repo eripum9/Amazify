@@ -95,20 +95,32 @@ Stock plugins are reviewed catalog entries maintained in this repository. Their 
 
 | Plugin | Version | Type | Description |
 |---|---:|---|---|
-| [True Big Mode](sample_plugins/amazify.true-big-mode/) | `0.2.0` | UI | Replaces Big Mode with a full-window layout, dynamic album-art ambience, custom playback controls, a draggable timeline, and a centered no-lyrics state |
+| [True Big Mode](sample_plugins/amazify.true-big-mode/) | `0.2.1` | UI | Replaces Big Mode with a full-window layout, dynamic album-art ambience, custom playback controls, a draggable timeline, and a centered no-lyrics state |
 | [Signal Studio](sample_plugins/amazify.theme.signal-studio/) | `0.2.0` | Theme | Reworks the full interface with a compact navigation rail, custom typography and textures, reactive ambience, user-selectable colors, redesigned panels, and a floating transport |
+| [Karaoke Lyrics](sample_plugins/amazify.karaoke-lyrics/) | `0.2.0` | UI | Optional word/syllable highlighting from Better Lyrics and Unison, using the current presentation's typography and colors; otherwise leaves native lyrics untouched. Requires Amazify `1.1.2` (unreleased source). |
 
 True Big Mode is inspired by [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics).
+
+True Big Mode's **Show lyrics** setting can hide lyrics and center the artwork.
+It also suspends Karaoke requests and highlighting while Big Mode is open;
+normal-view lyrics resume when you leave or disable True Big Mode. Both updated
+plugins require Amazify `1.1.2`. Switching unrelated plugins on or off no longer
+restarts every enabled plugin.
+
+Karaoke Lyrics needs no Spotify account, Premium subscription, OAuth, or Web API
+access. It only enhances genuine word/syllable timing: loading, line-only data,
+missing tracks and provider outages leave Amazon's existing lyrics visible.
+See [provider behavior and privacy](docs/karaoke-lyrics-provider.md). Provider
+availability is not guaranteed, and the plugin is disabled until you enable it.
 
 ### Scrapped plugins
 
 Unfinished or blocked experiments are preserved under
 [`sample_plugins/Scrapped/`](sample_plugins/Scrapped/) without being seeded or
 listed in the marketplace. The archive README records why each plugin was
-scrapped and must be updated whenever another plugin is moved there. Karaoke
-Lyrics is currently archived because its enhanced word/syllable provider depends
-on a Spotify development app whose owner must maintain Spotify Premium; Amazon
-Music's native line-synced lyrics remain the default.
+scrapped and must be updated whenever a plugin is archived or revived. Karaoke
+Lyrics `0.1.0` remains there as a historical Spotify/Spicy Lyrics prototype;
+`0.2.0` is a separate, revived implementation without that dependency.
 
 ### Signal Studio
 
@@ -192,7 +204,7 @@ advanced owner-scoped UI with `Amazify.ui.addSettingsSection`. See the
 [plugin settings documentation](docs/plugin-settings.md) for the complete
 schema and lifecycle.
 
-Declared `dom-read`, `dom-write`, `dom-style`, and `network` permissions are disclosure and consent signals, not a complete JavaScript sandbox. Plugins run in the Amazon Music renderer and can affect what the signed-in user can see and do. The dormant native `lyrics-provider` permission remains reserved for the archived Karaoke Lyrics prototype and is not available to catalog plugins.
+Declared `dom-read`, `dom-write`, `dom-style`, and `network` permissions are disclosure and consent signals, not a complete JavaScript sandbox. Plugins run in the Amazon Music renderer and can affect what the signed-in user can see and do. The native `lyrics-provider` permission is reserved for Karaoke Lyrics. It sends song title, artist, album and duration to two fixed rich-lyrics services, without Amazon credentials or Spotify tokens.
 
 For assets, use `Amazify.assets.url(manifest.id, "logo")` or `source.assetUrl("logo")` from JavaScript. Matching CSS `url(...)` references are rewritten to validated data URLs at runtime.
 
@@ -276,6 +288,7 @@ Focused bug fixes, runtime compatibility updates, documentation improvements, an
 
 - [Spicetify](https://spicetify.app/) and its community for pioneering music-app customization marketplaces.
 - [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics) for the visual inspiration behind True Big Mode.
+- [Better Lyrics](https://github.com/better-lyrics) and [Unison](https://github.com/better-lyrics/unison) for the optional rich-lyrics services. Amazify's provider adapter and bounded TTML parser are independently implemented.
 
 ## License
 

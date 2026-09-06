@@ -15,7 +15,7 @@ plugins without the required capability from gaining Amazify authority.
 - The user's authenticated Amazon Music renderer and data visible in its DOM.
 - Playback integrity and actions performed through Amazon Music controls.
 - Ephemeral bridge tokens, native-binding nonces, and DevTools session details.
-- Optional Spotify access/refresh tokens and OAuth PKCE state retained for the archived Karaoke Lyrics prototype.
+- Optional third-party lyrics and track-metadata fingerprints in the local lyrics cache. Historical Spotify credential-store code is dormant, not part of the active app path.
 - Installed plugin source, enabled state, catalog cache, settings, and logs.
 - The integrity and provenance of official catalog entries and candidate artifacts.
 - The integrity and provenance of application update metadata and installers.
@@ -96,20 +96,20 @@ code because all enabled plugins still share the Amazon renderer.
 
 ### Lyrics Provider Boundary
 
-Only the archived `amazify.karaoke-lyrics` prototype may declare
-`lyrics-provider`; no active catalog plugin receives it. Spotify OAuth and
-provider traffic execute in the native companion, not plugin JavaScript. OAuth
-uses Authorization Code with PKCE, a random loopback callback port and state,
-no client secret, and no scopes. Access tokens remain in memory and refresh
-tokens use Windows DPAPI. The broker accepts only exact Spotify auth/token/search
-and Spicy Lyrics query paths, rejects redirects, bounds bodies and timeouts, and
-discards canceled or stale requests before replying to the renderer.
+Only `amazify.karaoke-lyrics` may declare `lyrics-provider`. Provider traffic
+executes in the native companion, not plugin JavaScript. The broker only accepts
+the exact Better Lyrics and Unison HTTPS query endpoints, rejects redirects,
+bounds bodies, parsing and timeouts, limits queued work, and discards canceled
+or stale requests. Neither provider receives Spotify tokens or Amazon credentials.
+Song title, artist, album and duration are disclosed to those third parties only
+when the enabled plugin needs rich lyrics for a visible host.
 
-Spicy Lyrics receives the no-scope Spotify bearer token as required by its web
-authentication protocol. It is an external service and therefore a distinct
-trust boundary. Users who do not connect Spotify, are not allowlisted by a
-development-mode Spotify app, or encounter a provider failure retain Amazon's
-line-synchronized lyrics fallback.
+TTML is untrusted data: DTD/entities, active constructs, unsupported timing and
+invalid intervals are rejected under explicit size/depth/node limits. Normalized
+text is inserted using `textContent`. Provider styling is not applied. The
+renderer inherits the current native/theme presentation and only replaces the
+native lyric surface when rich timing is valid. Unavailable, malformed and
+line-only results leave Amazon's native line-synchronized lyrics visible.
 
 ### Catalog And Download Boundary
 
@@ -171,7 +171,7 @@ attested and uploaded to the workflow run; no release is created.
 | Workflow input executes shell code | Put expression values in step `env`; validate format before use; never interpolate inputs into `run` blocks |
 | Candidate is mistaken for an official release | Candidate naming and documentation, no release API commands, no `contents: write` |
 | Sensitive data appears in diagnostics or artifacts | Do not log session credentials; redact paths/tokens; keep evidence to versions, hashes, and check results |
-| A lyrics plugin steals native Spotify authority | Reserve `lyrics-provider` for the exact stock plugin ID, expose frozen narrow methods, keep tokens native-only, revoke on unmount |
+| A lyrics plugin abuses the native network broker | Reserve `lyrics-provider` for the exact plugin ID, expose frozen narrow methods, allow only two exact HTTPS endpoints, bound work and revoke on unmount |
 | Stale provider work replaces the current song | Track generations and request keys, cancel prior work, reject late track keys, stop executor replies after bridge close |
 | Provider redirects or returns oversized/malformed content | Exact HTTPS host/path allowlist, no redirects/proxies, strict content type and JSON, short timeouts and byte limits |
 
@@ -185,7 +185,7 @@ attested and uploaded to the workflow run; no release is created.
 - Unsigned executables do not provide Authenticode publisher identity and may trigger SmartScreen.
 - The updater's release identity ultimately depends on the security of the official GitHub repository and maintainer account.
 - Amazon Music DOM and launch behavior are unsupported upstream interfaces and may break safely or unexpectedly.
-- The archived Karaoke Lyrics renderer and capability consumers remain a renderer-level trust boundary when manually tested.
+- Karaoke Lyrics and capability consumers remain a renderer-level trust boundary, not a JavaScript sandbox. Provider ID checks prevent accidental substitution, not malicious code in the shared renderer.
 - Spicy Lyrics is an undocumented third-party service and may change, rate-limit, or reject compatibility requests.
 
 Sensitive findings should be reported as described in [`SECURITY.md`](../SECURITY.md).

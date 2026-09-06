@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 import unittest
 from typing import Any, Callable
@@ -9,6 +10,7 @@ from amazify.native_bridge import (
     ALLOWED_COMMANDS,
     BINDING_NAME,
     MAX_NATIVE_REQUEST_BYTES,
+    MAX_PENDING_LYRICS_LOADS,
     NativeBindingBridge,
 )
 
@@ -97,7 +99,7 @@ class StubLyricsProvider:
         self.closed = False
         self.canceled: list[str] = []
 
-    def load(self, track: dict[str, Any], request_key: str) -> dict[str, Any]:
+    def load(self, track: dict[str, Any], request_key: str, *, cancel_event: threading.Event | None = None) -> dict[str, Any]:
         return {"ok": True, "status": "ready", "trackKey": track.get("key")}
 
     def cancel(self, request_key: str) -> dict[str, Any]:
@@ -237,8 +239,6 @@ class NativeBindingBridgeTests(unittest.TestCase):
                 "app.update.check",
                 "app.update.install",
                 "lyrics.provider.status",
-                "lyrics.provider.beginAuth",
-                "lyrics.provider.disconnect",
                 "lyrics.provider.load",
                 "lyrics.provider.cancel",
                 "lyrics.provider.clearCache",
@@ -278,6 +278,39 @@ class NativeBindingBridgeTests(unittest.TestCase):
         self.assertIn("amazon:key", self.client.expressions[0])
         bridge.close()
         self.assertTrue(provider.closed)
+
+    def test_lyrics_queue_is_bounded_and_cancel_survives_waiting_for_worker(self) -> None:
+        release = threading.Event()
+        started = threading.Event()
+        observed: list[str] = []
+
+        class SlowProvider(StubLyricsProvider):
+            def load(self, track: dict[str, Any], request_key: str, *, cancel_event: threading.Event | None = None) -> dict[str, Any]:
+                started.set()
+                release.wait(2)
+                if cancel_event is not None and not cancel_event.is_set():
+                    observed.append(request_key)
+                return {"ok": True}
+
+        provider = SlowProvider()
+        self.bridge.lyrics_provider = provider  # type: ignore[assignment]
+        try:
+            for index in range(MAX_PENDING_LYRICS_LOADS):
+                self.send("lyrics.provider.load", payload={"track": {}, "requestKey": str(index)}, request_id=f"load-{index}")
+            self.assertTrue(started.wait(1))
+            self.send("lyrics.provider.load", payload={"track": {}, "requestKey": "overflow"})
+            self.assertIn("capacity is busy", self.client.expressions[-1])
+            self.send("lyrics.provider.cancel", payload={"requestKey": "7"})
+            release.set()
+            deadline = time.monotonic() + 2
+            while self.bridge._futures and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertNotIn("7", observed)
+            self.assertFalse(any('callback("load-7"' in expression for expression in self.client.expressions))
+            self.assertEqual(len(observed), MAX_PENDING_LYRICS_LOADS - 1)
+        finally:
+            release.set()
+            self.bridge.close()
 
 
 if __name__ == "__main__":
