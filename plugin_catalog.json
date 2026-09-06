@@ -5,13 +5,13 @@
       "id": "amazify.true-big-mode",
       "trust": "stock",
       "repository": "eripum9/Amazify",
-      "sourceCommit": "552501636f655a8b2d141777bd5ef9486374a352",
+      "sourceCommit": "285d7bb34cd35de5e2c479f192627f1ed1a3ac45",
       "pluginRoot": "sample_plugins/amazify.true-big-mode",
       "minimumAmazifyVersion": "1.1.2",
       "manifest": {
         "id": "amazify.true-big-mode",
         "name": "True Big Mode",
-        "version": "0.2.1",
+        "version": "0.2.2",
         "author": "Amazify",
         "type": "ui",
         "description": "Turns Amazon Music Big Mode into a cleaner full-screen lyrics view with album-art exit behavior.",
@@ -42,13 +42,13 @@
       "files": [
         {
           "path": "manifest.json",
-          "sha256": "7316e6bcd7f5e5779d8b139be3d580a1adb8801f68900b8cef726ab7b74ca341",
+          "sha256": "0549a1391ab5cb5ddea2115936c82f80ae43d236c035e1352f10aa85ad4517a5",
           "size": 739
         },
         {
           "path": "plugin.js",
-          "sha256": "671366f6af40806914a84c3f1c0a104ebb80aaec80e9f9179db7776eff52af9d",
-          "size": 42982
+          "sha256": "02fec0c304b4966c2a6cf1bd8cb8d5dbeb1df73939d512531bf3d505c445ed22",
+          "size": 44286
         },
         {
           "path": "style.css",
@@ -143,13 +143,13 @@
       "id": "amazify.karaoke-lyrics",
       "trust": "stock",
       "repository": "eripum9/Amazify",
-      "sourceCommit": "88961972166f558e0cbfbaa7babb7daf8959904c",
+      "sourceCommit": "285d7bb34cd35de5e2c479f192627f1ed1a3ac45",
       "pluginRoot": "sample_plugins/amazify.karaoke-lyrics",
       "minimumAmazifyVersion": "1.1.2",
       "manifest": {
         "id": "amazify.karaoke-lyrics",
         "name": "Karaoke Lyrics",
-        "version": "0.2.1",
+        "version": "0.2.2",
         "minimumAmazifyVersion": "1.1.2",
         "author": "Amazify",
         "type": "ui",
@@ -173,13 +173,13 @@
       "files": [
         {
           "path": "manifest.json",
-          "sha256": "130bebe35ed377991885959b189920b53271a4d65704f969c56a1604f878d6a5",
+          "sha256": "cec19208cbd15e9ef07d15b859d685eb583327be4ceb10d60709600f765f384b",
           "size": 522
         },
         {
           "path": "plugin.js",
-          "sha256": "428bf99287f227c1eb13adefd08e24135b50b6c623e54696391d8baaa360953a",
-          "size": 36019
+          "sha256": "bc2787d18151955e65e33e31acff9ec7e84860b2cc39b6e1ed160e5860c96223",
+          "size": 36115
         },
         {
           "path": "base.css",
