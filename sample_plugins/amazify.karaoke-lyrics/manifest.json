@@ -1,7 +1,7 @@
 {
   "id": "amazify.karaoke-lyrics",
   "name": "Karaoke Lyrics",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "minimumAmazifyVersion": "1.1.2",
   "author": "Amazify",
   "type": "ui",

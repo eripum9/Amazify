@@ -15,6 +15,7 @@
   overflow-x: hidden;
   overscroll-behavior: contain;
   scrollbar-width: none;
+  pointer-events: none;
 }
 .amazify-karaoke-host > ul.amazify-karaoke-scroller {
   position: static !important;
@@ -27,7 +28,7 @@
   padding-top: var(--karaoke-leading-space, 0px) !important;
   padding-bottom: var(--karaoke-trailing-space, 0px) !important;
 }
-.amazify-karaoke-host .amazify-karaoke-line { cursor: pointer; }
+.amazify-karaoke-host .amazify-karaoke-line { cursor: pointer; pointer-events: auto; }
 .amazify-karaoke-line:focus-visible { outline: 1px solid currentColor; outline-offset: -1px; }
 .amazify-karaoke-line .lyricsText .amazify-karaoke-token {
   /* Amazon's global span rule otherwise resets nested tokens to Ember Regular. */

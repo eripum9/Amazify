@@ -679,17 +679,16 @@ Karaoke.Integration.prototype.hostForView = function (view) {
     const template = Karaoke.lyricScopeTemplate(view);
     const outer = view.querySelector(".lyricsContainer");
     const sizeClass = Array.from(view.classList).find(function (name) { return /^x[0-9]+$/.test(name); }) || "x4";
-    wrapper = Karaoke.presentationElement(template, "div", "lyricsWrapper " + sizeClass);
-    if (outer) {
-      this.region = wrapper;
-      this.placeholders = Array.from(outer.children);
-      this.placeholders.forEach(function (node) { node.setAttribute("data-amazify-karaoke-placeholder", ""); });
-      outer.appendChild(wrapper);
-    } else {
-      this.region = Karaoke.presentationElement(template, "div", "lyricsContainer");
-      this.region.appendChild(wrapper);
-      view.appendChild(this.region);
+    if (!outer) {
+      // Fail soft when Amazon has no stable lyrics container in this view.
+      // Creating a synthetic root on the full view can intercept unrelated clicks.
+      return null;
     }
+    wrapper = Karaoke.presentationElement(template, "div", "lyricsWrapper " + sizeClass);
+    this.region = wrapper;
+    this.placeholders = Array.from(outer.children);
+    this.placeholders.forEach(function (node) { node.setAttribute("data-amazify-karaoke-placeholder", ""); });
+    outer.appendChild(wrapper);
     this.region.classList.add("amazify-karaoke-region");
     this.region.dataset.amazifyPluginId = "amazify.karaoke-lyrics";
   }
@@ -763,7 +762,7 @@ Karaoke.addSettings = function (Amazify, session) {
 
 // source: src/bootstrap.js
 Karaoke.bootstrap = function (Amazify) {
-  if (!Amazify.lyricsProvider || Amazify.lyricsProvider.protocolVersion !== 2) throw new Error("Karaoke Lyrics 0.2.2 requires the Amazify 1.1.2 rich-lyrics companion");
+  if (!Amazify.lyricsProvider || Amazify.lyricsProvider.protocolVersion !== 2) throw new Error("Karaoke Lyrics 0.2.3 requires the Amazify 1.1.2 rich-lyrics companion");
   const session = new Karaoke.Session(Amazify.lyricsProvider);
   const integration = new Karaoke.Integration(session);
   const releaseCapability = Amazify.capabilities.provide("amazify.karaoke-lyrics.presentation", {
