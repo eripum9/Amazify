@@ -5,13 +5,13 @@
       "id": "amazify.true-big-mode",
       "trust": "stock",
       "repository": "eripum9/Amazify",
-      "sourceCommit": "d0426c0fc60c5d382b57930cd5778459e86b0f8a",
+      "sourceCommit": "552501636f655a8b2d141777bd5ef9486374a352",
       "pluginRoot": "sample_plugins/amazify.true-big-mode",
-      "minimumAmazifyVersion": "1.1.0",
+      "minimumAmazifyVersion": "1.1.2",
       "manifest": {
         "id": "amazify.true-big-mode",
         "name": "True Big Mode",
-        "version": "0.2.0",
+        "version": "0.2.1",
         "author": "Amazify",
         "type": "ui",
         "description": "Turns Amazon Music Big Mode into a cleaner full-screen lyrics view with album-art exit behavior.",
@@ -19,11 +19,20 @@
         "styles": [
           "style.css"
         ],
-        "assets": {},
         "permissions": [
           "dom-read",
           "dom-write",
           "dom-style"
+        ],
+        "minimumAmazifyVersion": "1.1.2",
+        "settings": [
+          {
+            "id": "showLyrics",
+            "type": "boolean",
+            "label": "Show lyrics",
+            "description": "Show lyrics beside the artwork. When off, center the artwork and suspend Karaoke Lyrics while True Big Mode is open.",
+            "default": true
+          }
         ],
         "amazonMusic": {
           "testedAppVersions": [],
@@ -33,18 +42,18 @@
       "files": [
         {
           "path": "manifest.json",
-          "sha256": "37286f2198de7ef3dfb8607ea96b4a6234a26022d4ef241695dc5e4357492a32",
-          "size": 426
+          "sha256": "7316e6bcd7f5e5779d8b139be3d580a1adb8801f68900b8cef726ab7b74ca341",
+          "size": 739
         },
         {
           "path": "plugin.js",
-          "sha256": "74f9a9cd23bf2da239501316fe0fe778c06bf57050d761eaad2e411062380672",
-          "size": 41774
+          "sha256": "671366f6af40806914a84c3f1c0a104ebb80aaec80e9f9179db7776eff52af9d",
+          "size": 42982
         },
         {
           "path": "style.css",
-          "sha256": "9c118e9822620fbbd87f387e930ea524c43f509e4836c18609ae5ccb9a9a9b90",
-          "size": 29846
+          "sha256": "dfbffe9e7f5e3a6ffeafc2a77dcd96d6729898cd7beca28e3d40cb5f241610a8",
+          "size": 28593
         }
       ]
     },
@@ -127,6 +136,60 @@
           "path": "OFL.txt",
           "sha256": "18a4de52385f6b988782639d5d0cc1326e5a8c2de9a7f01d7b20d9aedcc60943",
           "size": 4401
+        }
+      ]
+    },
+    {
+      "id": "amazify.karaoke-lyrics",
+      "trust": "stock",
+      "repository": "eripum9/Amazify",
+      "sourceCommit": "552501636f655a8b2d141777bd5ef9486374a352",
+      "pluginRoot": "sample_plugins/amazify.karaoke-lyrics",
+      "minimumAmazifyVersion": "1.1.2",
+      "manifest": {
+        "id": "amazify.karaoke-lyrics",
+        "name": "Karaoke Lyrics",
+        "version": "0.2.0",
+        "minimumAmazifyVersion": "1.1.2",
+        "author": "Amazify",
+        "type": "ui",
+        "description": "Adds word and syllable highlighting when rich lyrics are available. Keeps your native lyrics and theme otherwise. No account required.",
+        "entry": "plugin.js",
+        "styles": [
+          "base.css",
+          "normal.css"
+        ],
+        "permissions": [
+          "dom-read",
+          "dom-write",
+          "dom-style",
+          "lyrics-provider"
+        ],
+        "amazonMusic": {
+          "testedAppVersions": [],
+          "target": "desktop"
+        }
+      },
+      "files": [
+        {
+          "path": "manifest.json",
+          "sha256": "e485f985bc319e793e2c82b0fec96e43e5c68d4ec952e69ca27d4fcd0ae17bea",
+          "size": 522
+        },
+        {
+          "path": "plugin.js",
+          "sha256": "b2680622fd5dbf89f39dcb1ce5f2c24e0ab6f0b0cc0444806ab34946c9d51b03",
+          "size": 32683
+        },
+        {
+          "path": "base.css",
+          "sha256": "86a70aa4f52adefba64ff5aa11a73c0103bd895c84240e7c0c9685f475e8685a",
+          "size": 2077
+        },
+        {
+          "path": "normal.css",
+          "sha256": "124d381f3dfae02d80c2a265416eb4836f183c6e5c5f4190631f67d7d24a4b3a",
+          "size": 416
         }
       ]
     }
