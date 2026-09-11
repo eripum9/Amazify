@@ -94,12 +94,15 @@ Karaoke.Renderer.prototype.setModel = function (model) {
     text.dir = "auto";
     const tokens = [];
     line.words.forEach(function (word) {
+      const group = document.createElement("span");
+      group.className = "amazify-karaoke-word";
+      text.appendChild(group);
       word.syllables.forEach(function (syllable) {
         const token = document.createElement("span");
         token.className = "amazify-karaoke-token";
         token.textContent = syllable.text;
-        text.appendChild(token);
-        tokens.push({ node: token, timing: syllable, progress: -1 });
+        group.appendChild(token);
+        tokens.push({ node: token, timing: syllable, progress: -1, active: false });
       });
     });
     function seek() {
@@ -132,9 +135,14 @@ Karaoke.Renderer.prototype.update = function (timeMs, forceScroll) {
   const renderer = this;
   changed.forEach(function (index) {
     const line = renderer.lines[index];
-    line.row.classList.toggle("current", active.has(index));
+    if (renderer.activeLines.has(index) !== active.has(index)) line.row.classList.toggle("current", active.has(index));
     line.tokens.forEach(function (token) {
       const value = Math.round(Karaoke.progress(timeMs, token.timing.startMs, token.timing.endMs) * 1000) / 1000;
+      const singing = timeMs >= token.timing.startMs && timeMs < token.timing.endMs;
+      if (singing !== token.active) {
+        token.active = singing;
+        token.node.classList.toggle("is-singing", singing);
+      }
       if (value !== token.progress) {
         token.progress = value;
         token.node.style.setProperty("--lyric-progress", String(value * 100) + "%");
@@ -151,7 +159,8 @@ Karaoke.Renderer.prototype.update = function (timeMs, forceScroll) {
 Karaoke.Renderer.prototype.centerActive = function (force) {
   const target = this.lines[this.activeLine];
   if (!target || !this.node.isConnected || (!force && performance.now() < this.manualUntil)) return;
-  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const motion = this.node.dataset.motion;
+  const reduced = motion === "off" || (motion !== "on" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   this.programmaticUntil = performance.now() + (reduced ? 100 : 1200);
   const outer = this.node.getBoundingClientRect();
   const inner = target.row.getBoundingClientRect();
@@ -200,9 +209,8 @@ Karaoke.Renderer.prototype.claim = function (container, presentation) {
     this.nativeSurfaces.forEach(function (node) { node.setAttribute("data-amazify-karaoke-native", ""); });
     container.scrollTop = 0;
     renderer.measure();
-    renderer.update(Karaoke.readPlaybackTime(), true);
   }
-  this.node.dataset.presentation = presentation || "normal";
+  if (presentationChanged) this.node.dataset.presentation = presentation || "normal";
   const inactive = (nativeList || this.scroller).querySelector(".lyricsLine:not(.current) .lyricsText");
   if (inactive) {
     const textColor = getComputedStyle(inactive).color;

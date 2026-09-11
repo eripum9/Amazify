@@ -11,9 +11,12 @@ Karaoke.bootstrap = function (Amazify) {
     }
   });
   const removeSettings = Karaoke.addSettings(Amazify, session);
+  const unsubscribeSettings = Amazify.settings.subscribe(function (settings) {
+    session.renderer.node.dataset.motion = settings.motion === "on" || settings.motion === "off" ? settings.motion : "system";
+  });
   integration.start();
   return function () {
-    try { removeSettings(); }
+    try { unsubscribeSettings(); removeSettings(); }
     finally { try { releaseCapability(); }
       finally { integration.destroy(); session.destroy(); }
     }

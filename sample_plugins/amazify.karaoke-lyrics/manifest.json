@@ -1,7 +1,7 @@
 {
   "id": "amazify.karaoke-lyrics",
   "name": "Karaoke Lyrics",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "minimumAmazifyVersion": "1.1.2",
   "author": "Amazify",
   "type": "ui",
@@ -9,5 +9,19 @@
   "entry": "plugin.js",
   "styles": ["base.css", "normal.css"],
   "permissions": ["dom-read", "dom-write", "dom-style", "lyrics-provider"],
+  "settings": [
+    {
+      "id": "motion",
+      "type": "select",
+      "label": "Lyric motion",
+      "description": "Word and syllable lifts, hover glow, and smooth lyric centering.",
+      "default": "system",
+      "options": [
+        {"value": "system", "label": "Follow system"},
+        {"value": "on", "label": "On"},
+        {"value": "off", "label": "Off"}
+      ]
+    }
+  ],
   "amazonMusic": {"testedAppVersions": [], "target": "desktop"}
 }

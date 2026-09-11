@@ -29,14 +29,40 @@
   padding-bottom: var(--karaoke-trailing-space, 0px) !important;
 }
 .amazify-karaoke-host .amazify-karaoke-line { cursor: pointer; pointer-events: auto; }
+.amazify-karaoke-host .amazify-karaoke-line .lyricsText {
+  display: inline-block;
+  transform: translateY(0);
+  transition: transform 180ms ease, text-shadow 180ms ease;
+}
+.amazify-karaoke-host .amazify-karaoke-line:hover .lyricsText,
+.amazify-karaoke-host .amazify-karaoke-line:focus .lyricsText {
+  transform: translateY(-3px);
+  text-shadow: 0 0 10px currentColor;
+}
 .amazify-karaoke-line:focus-visible { outline: 1px solid currentColor; outline-offset: -1px; }
+.amazify-karaoke-line .lyricsText .amazify-karaoke-word {
+  display: inline-block;
+  font: inherit !important;
+  letter-spacing: inherit !important;
+  text-transform: inherit !important;
+  color: inherit;
+  white-space: pre;
+}
 .amazify-karaoke-line .lyricsText .amazify-karaoke-token {
   /* Amazon's global span rule otherwise resets nested tokens to Ember Regular. */
   font: inherit !important;
   letter-spacing: inherit !important;
   text-transform: inherit !important;
   color: inherit;
-  white-space: pre-wrap;
+  display: inline-block;
+  white-space: pre;
+  transform: translateY(0);
+  transform-origin: center bottom;
+  transition: transform 160ms cubic-bezier(0.2, 0.7, 0.3, 1), text-shadow 160ms ease;
+}
+.amazify-karaoke-line.current .amazify-karaoke-token.is-singing {
+  transform: translateY(-3px);
+  text-shadow: 0 0 8px currentColor;
 }
 .amazify-karaoke-line.current .amazify-karaoke-token {
   --lyric-progress: 0%;
@@ -52,3 +78,17 @@
 .amazify-karaoke-host::-webkit-scrollbar-thumb { background: transparent !important; }
 .amazify-karaoke-host.is-manual-scroll { scrollbar-width: thin !important; }
 .amazify-karaoke-host.is-manual-scroll::-webkit-scrollbar-thumb { background: currentColor !important; }
+@media (prefers-reduced-motion: reduce) {
+  .amazify-karaoke-host:not([data-motion="on"]) .amazify-karaoke-line .lyricsText,
+  .amazify-karaoke-host:not([data-motion="on"]) .amazify-karaoke-line .amazify-karaoke-token {
+    transition: none;
+    transform: none;
+    text-shadow: none;
+  }
+}
+.amazify-karaoke-host[data-motion="off"] .amazify-karaoke-line .lyricsText,
+.amazify-karaoke-host[data-motion="off"] .amazify-karaoke-line .amazify-karaoke-token {
+  transition: none;
+  transform: none;
+  text-shadow: none;
+}

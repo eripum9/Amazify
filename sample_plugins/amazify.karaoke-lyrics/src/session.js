@@ -71,6 +71,7 @@ Karaoke.Session = function (provider) {
   this.claimOrder = 0;
   this.raf = 0;
   this.timeout = 0;
+  this.clock = new Karaoke.PlaybackClock();
   this.renderer = new Karaoke.Renderer(Karaoke.seek);
   this.destroyed = false;
 };
@@ -236,19 +237,22 @@ Karaoke.Session.prototype.syncHost = function () {
   else this.renderer.release();
   if (!this.visible() || !this.renderer.node.isConnected) this.stopRaf();
   else {
-    this.renderer.update(Karaoke.readPlaybackTime(), false);
+    this.renderer.update(this.playbackTime(), false);
     this.startRaf();
   }
   if (wasEnhanced !== this.renderer.node.isConnected) this.publish();
 };
-Karaoke.Session.prototype.stopRaf = function () { cancelAnimationFrame(this.raf); this.raf = 0; };
+Karaoke.Session.prototype.playbackTime = function () {
+  return this.clock.read(Karaoke.readPlaybackTime(), Karaoke.isPlaying(), performance.now(), this.track && this.track.durationMs);
+};
+Karaoke.Session.prototype.stopRaf = function () { cancelAnimationFrame(this.raf); this.raf = 0; this.clock.reset(); };
 Karaoke.Session.prototype.startRaf = function () {
   if (this.destroyed || this.raf || !this.model || !this.renderer.node.isConnected || !this.visible() || !Karaoke.isPlaying()) return;
   const session = this;
   function frame() {
     session.raf = 0;
     if (session.destroyed || !session.model || !session.visible()) return;
-    session.renderer.update(Karaoke.readPlaybackTime(), false);
+    session.renderer.update(session.playbackTime(), false);
     if (Karaoke.isPlaying()) session.raf = requestAnimationFrame(frame);
   }
   this.raf = requestAnimationFrame(frame);

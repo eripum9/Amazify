@@ -76,6 +76,32 @@ Karaoke.durationMs = function (track, progress) {
   return Number.isFinite(value) && value > 0 ? value : 0;
 };
 
+// source: src/playback-clock.js
+// Amazon publishes position in roughly 120 ms steps. Interpolate only that
+// short gap; a stalled player must never turn into a free-running lyrics clock.
+Karaoke.PlaybackClock = function () { this.reset(); };
+Karaoke.PlaybackClock.prototype.reset = function () {
+  this.sample = null;
+  this.sampleAt = 0;
+  this.output = 0;
+  this.playing = false;
+};
+Karaoke.PlaybackClock.prototype.read = function (position, playing, now, duration) {
+  position = Math.max(0, Number(position) || 0);
+  const discontinuity = this.sample === null || this.playing !== playing ||
+    position < this.sample || Math.abs(position - this.output) > 350;
+  if (discontinuity || position !== this.sample) {
+    this.sample = position;
+    this.sampleAt = now;
+  }
+  let value = position + (playing ? Math.max(0, Math.min(250, now - this.sampleAt)) : 0);
+  if (!discontinuity && playing) value = Math.max(value, this.output);
+  if (duration > 0) value = Math.min(value, duration);
+  this.playing = playing;
+  this.output = value;
+  return value;
+};
+
 // source: src/normalization.js
 // The native broker parses provider formats. Validate its rich-only v1 boundary again.
 Karaoke.normalizeRich = function (raw, trackKey) {
@@ -228,12 +254,15 @@ Karaoke.Renderer.prototype.setModel = function (model) {
     text.dir = "auto";
     const tokens = [];
     line.words.forEach(function (word) {
+      const group = document.createElement("span");
+      group.className = "amazify-karaoke-word";
+      text.appendChild(group);
       word.syllables.forEach(function (syllable) {
         const token = document.createElement("span");
         token.className = "amazify-karaoke-token";
         token.textContent = syllable.text;
-        text.appendChild(token);
-        tokens.push({ node: token, timing: syllable, progress: -1 });
+        group.appendChild(token);
+        tokens.push({ node: token, timing: syllable, progress: -1, active: false });
       });
     });
     function seek() {
@@ -266,9 +295,14 @@ Karaoke.Renderer.prototype.update = function (timeMs, forceScroll) {
   const renderer = this;
   changed.forEach(function (index) {
     const line = renderer.lines[index];
-    line.row.classList.toggle("current", active.has(index));
+    if (renderer.activeLines.has(index) !== active.has(index)) line.row.classList.toggle("current", active.has(index));
     line.tokens.forEach(function (token) {
       const value = Math.round(Karaoke.progress(timeMs, token.timing.startMs, token.timing.endMs) * 1000) / 1000;
+      const singing = timeMs >= token.timing.startMs && timeMs < token.timing.endMs;
+      if (singing !== token.active) {
+        token.active = singing;
+        token.node.classList.toggle("is-singing", singing);
+      }
       if (value !== token.progress) {
         token.progress = value;
         token.node.style.setProperty("--lyric-progress", String(value * 100) + "%");
@@ -285,7 +319,8 @@ Karaoke.Renderer.prototype.update = function (timeMs, forceScroll) {
 Karaoke.Renderer.prototype.centerActive = function (force) {
   const target = this.lines[this.activeLine];
   if (!target || !this.node.isConnected || (!force && performance.now() < this.manualUntil)) return;
-  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const motion = this.node.dataset.motion;
+  const reduced = motion === "off" || (motion !== "on" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   this.programmaticUntil = performance.now() + (reduced ? 100 : 1200);
   const outer = this.node.getBoundingClientRect();
   const inner = target.row.getBoundingClientRect();
@@ -334,9 +369,8 @@ Karaoke.Renderer.prototype.claim = function (container, presentation) {
     this.nativeSurfaces.forEach(function (node) { node.setAttribute("data-amazify-karaoke-native", ""); });
     container.scrollTop = 0;
     renderer.measure();
-    renderer.update(Karaoke.readPlaybackTime(), true);
   }
-  this.node.dataset.presentation = presentation || "normal";
+  if (presentationChanged) this.node.dataset.presentation = presentation || "normal";
   const inactive = (nativeList || this.scroller).querySelector(".lyricsLine:not(.current) .lyricsText");
   if (inactive) {
     const textColor = getComputedStyle(inactive).color;
@@ -447,6 +481,7 @@ Karaoke.Session = function (provider) {
   this.claimOrder = 0;
   this.raf = 0;
   this.timeout = 0;
+  this.clock = new Karaoke.PlaybackClock();
   this.renderer = new Karaoke.Renderer(Karaoke.seek);
   this.destroyed = false;
 };
@@ -612,19 +647,22 @@ Karaoke.Session.prototype.syncHost = function () {
   else this.renderer.release();
   if (!this.visible() || !this.renderer.node.isConnected) this.stopRaf();
   else {
-    this.renderer.update(Karaoke.readPlaybackTime(), false);
+    this.renderer.update(this.playbackTime(), false);
     this.startRaf();
   }
   if (wasEnhanced !== this.renderer.node.isConnected) this.publish();
 };
-Karaoke.Session.prototype.stopRaf = function () { cancelAnimationFrame(this.raf); this.raf = 0; };
+Karaoke.Session.prototype.playbackTime = function () {
+  return this.clock.read(Karaoke.readPlaybackTime(), Karaoke.isPlaying(), performance.now(), this.track && this.track.durationMs);
+};
+Karaoke.Session.prototype.stopRaf = function () { cancelAnimationFrame(this.raf); this.raf = 0; this.clock.reset(); };
 Karaoke.Session.prototype.startRaf = function () {
   if (this.destroyed || this.raf || !this.model || !this.renderer.node.isConnected || !this.visible() || !Karaoke.isPlaying()) return;
   const session = this;
   function frame() {
     session.raf = 0;
     if (session.destroyed || !session.model || !session.visible()) return;
-    session.renderer.update(Karaoke.readPlaybackTime(), false);
+    session.renderer.update(session.playbackTime(), false);
     if (Karaoke.isPlaying()) session.raf = requestAnimationFrame(frame);
   }
   this.raf = requestAnimationFrame(frame);
@@ -774,9 +812,12 @@ Karaoke.bootstrap = function (Amazify) {
     }
   });
   const removeSettings = Karaoke.addSettings(Amazify, session);
+  const unsubscribeSettings = Amazify.settings.subscribe(function (settings) {
+    session.renderer.node.dataset.motion = settings.motion === "on" || settings.motion === "off" ? settings.motion : "system";
+  });
   integration.start();
   return function () {
-    try { removeSettings(); }
+    try { unsubscribeSettings(); removeSettings(); }
     finally { try { releaseCapability(); }
       finally { integration.destroy(); session.destroy(); }
     }

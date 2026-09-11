@@ -8,7 +8,7 @@ const root = path.resolve(__dirname, '../../sample_plugins/amazify.karaoke-lyric
 function setup() {
   let id = 0;
   const timers = new Map(), frames = new Map(), requests = [], cancels = [];
-  const context = vm.createContext({ console, Set, Object, Promise, Math,
+  const context = vm.createContext({ console, Set, Object, Promise, Math, performance: {now: () => 0},
     document: { visibilityState: 'visible' }, getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
     requestAnimationFrame: callback => { frames.set(++id, callback); return id; },
     cancelAnimationFrame: key => frames.delete(key),
@@ -17,7 +17,7 @@ function setup() {
       Renderer: function () { this.node = { isConnected: false }; this.setModel = model => { this.model = model; if (!model) this.release(); }; this.claim = (host, presentation) => { this.node.isConnected = true; this.host = host; this.presentation = presentation; }; this.release = () => { this.node.isConnected = false; }; this.update = () => {}; this.destroy = this.release; }
     }
   });
-  for (const name of ['normalization.js', 'session.js']) vm.runInContext(fs.readFileSync(path.join(root, name), 'utf8'), context);
+  for (const name of ['normalization.js', 'playback-clock.js', 'session.js']) vm.runInContext(fs.readFileSync(path.join(root, name), 'utf8'), context);
   const provider = { load(track, key) { return new Promise(resolve => requests.push({ track, key, resolve })); }, cancel(key) { cancels.push(key); return Promise.resolve(); } };
   const session = new context.Karaoke.Session(provider);
   const host = { nodeType: 1, isConnected: true, getClientRects: () => [{}] };
@@ -39,6 +39,55 @@ test('rich boundary preserves real syllables and rejects line-only, wrong-track 
   assert.equal(k.progress(750, 500, 1000), 0.5);
   assert.equal(k.progress(750, 1000, 1000), 0);
   assert.equal(k.findActiveLine([{startMs:0},{startMs:500},{startMs:1000}], 750),1);
+});
+
+test('playback interpolation smooths coarse samples but stops at stalls, pauses and seeks', () => {
+  const clock = new (setup().context.Karaoke.PlaybackClock)();
+  assert.equal(clock.read(1000, true, 0, 10000), 1000);
+  assert.equal(clock.read(1000, true, 16, 10000), 1016);
+  assert.equal(clock.read(1000, true, 112, 10000), 1112);
+  assert.equal(clock.read(1120, true, 128, 10000), 1120);
+  assert.equal(clock.read(1120, true, 144, 10000), 1136);
+  assert.equal(clock.read(1120, true, 1000, 10000), 1370);
+  assert.equal(clock.read(1120, false, 1016, 10000), 1120);
+  assert.equal(clock.read(1120, false, 5000, 10000), 1120);
+  assert.equal(clock.read(1120, true, 5100, 10000), 1120);
+  assert.equal(clock.read(7000, true, 5116, 10000), 7000);
+  assert.equal(clock.read(2000, true, 5132, 10000), 2000);
+  clock.reset();
+  assert.equal(clock.read(9990, true, 10000, 10000), 9990);
+  assert.equal(clock.read(9990, true, 10020, 10000), 10000);
+});
+
+test('same-position RAF does not rewrite active line classes', () => {
+  const s = setup(), k = s.context.Karaoke;
+  vm.runInContext(fs.readFileSync(path.join(root, 'renderer.js'), 'utf8'), s.context);
+  let toggles = 0, writes = 0;
+  const renderer = {model:k.normalizeRich(model('A'),'A'), activeLines:new Set(), activeLine:-1,
+    lastTime:null, manualUntil:0, centerActive(){}, lines:[{
+      row:{classList:{toggle(){toggles++;}}}, tokens:[{progress:-1,active:false,timing:{startMs:0,endMs:1000},node:{classList:{toggle(){}},style:{setProperty(){writes++;}}}}]
+    }]};
+  k.Renderer.prototype.update.call(renderer, 100, false);
+  k.Renderer.prototype.update.call(renderer, 100, false);
+  k.Renderer.prototype.update.call(renderer, 116, false);
+  assert.equal(toggles,1);
+  assert.equal(writes,2);
+});
+
+test('word lifts follow syllable timing, reset on seek, and do not restart while paused', () => {
+  const s = setup(), k = s.context.Karaoke;
+  vm.runInContext(fs.readFileSync(path.join(root, 'renderer.js'), 'utf8'), s.context);
+  const updates = [];
+  const tokens = [0, 500].map(start => ({active:false,progress:-1,
+    timing:{startMs:start,endMs:start+500},node:{style:{setProperty(){}},
+      classList:{toggle(name,value){updates.push([start,name,value]);}}}}));
+  const renderer = {model:k.normalizeRich(model('A'),'A'),activeLines:new Set(),activeLine:-1,
+    lastTime:null,manualUntil:0,centerActive(){},lines:[{row:{classList:{toggle(){}}},tokens}]};
+  [100,100,510,510,100,1000].forEach(time => k.Renderer.prototype.update.call(renderer,time,false));
+  assert.deepEqual(updates, [
+    [0,'is-singing',true], [0,'is-singing',false], [500,'is-singing',true],
+    [0,'is-singing',true], [500,'is-singing',false], [0,'is-singing',false]
+  ]);
 });
 test('lazy loading, no refetch loop after a miss, native lyrics preserved', async () => {
   const s = setup();
@@ -83,6 +132,11 @@ test('native-only CSS has no unscoped fallback changes or theme palette', () => 
   const tokens = base.match(/\.amazify-karaoke-line \.lyricsText \.amazify-karaoke-token\s*\{([^}]+)\}/)[1];
   assert.match(tokens, /font:\s*inherit\s*!important/);
   assert.match(tokens, /letter-spacing:\s*inherit\s*!important/);
+  const words = base.match(/\.amazify-karaoke-line \.lyricsText \.amazify-karaoke-word\s*\{([^}]+)\}/)[1];
+  assert.match(words, /font:\s*inherit\s*!important/);
+  assert.doesNotMatch(base, /scale\(/);
+  assert.match(base, /data-motion="off"/);
+  assert.match(base, /prefers-reduced-motion: reduce/);
 });
 test('bootstrap refuses old Spotify broker before registering any UI', () => {
   const s=setup(); vm.runInContext(fs.readFileSync(path.join(root,'bootstrap.js'),'utf8'),s.context);

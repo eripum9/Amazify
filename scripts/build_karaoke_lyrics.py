@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "sample_plugins" / "amazify.karaoke-lyrics"
 SOURCES = (
     "track-adapter.js",
+    "playback-clock.js",
     "normalization.js",
     "renderer.js",
     "session.js",
