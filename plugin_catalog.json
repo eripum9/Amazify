@@ -143,13 +143,13 @@
       "id": "amazify.karaoke-lyrics",
       "trust": "stock",
       "repository": "eripum9/Amazify",
-      "sourceCommit": "605b65b14a9cfa3b0eab4b884a21e34f49c7d14c",
+      "sourceCommit": "66a091a56b59939e2bfba5d8870d7bdc933e41ff",
       "pluginRoot": "sample_plugins/amazify.karaoke-lyrics",
       "minimumAmazifyVersion": "1.1.2",
       "manifest": {
         "id": "amazify.karaoke-lyrics",
         "name": "Karaoke Lyrics",
-        "version": "0.2.3",
+        "version": "0.2.4",
         "minimumAmazifyVersion": "1.1.2",
         "author": "Amazify",
         "type": "ui",
@@ -165,6 +165,29 @@
           "dom-style",
           "lyrics-provider"
         ],
+        "settings": [
+          {
+            "id": "motion",
+            "type": "select",
+            "label": "Lyric motion",
+            "description": "Word and syllable lifts, hover glow, and smooth lyric centering.",
+            "default": "system",
+            "options": [
+              {
+                "value": "system",
+                "label": "Follow system"
+              },
+              {
+                "value": "on",
+                "label": "On"
+              },
+              {
+                "value": "off",
+                "label": "Off"
+              }
+            ]
+          }
+        ],
         "amazonMusic": {
           "testedAppVersions": [],
           "target": "desktop"
@@ -173,18 +196,18 @@
       "files": [
         {
           "path": "manifest.json",
-          "sha256": "d01b0cdde5aa59a8bcfe0be1ec2847d5d17d489441cd207d6311d3da73a96070",
-          "size": 522
+          "sha256": "73a28b3f35c855ef6c1f46384c112751595da48cc3248f9c22f472358261c36d",
+          "size": 911
         },
         {
           "path": "plugin.js",
-          "sha256": "943bd59ce1efcf77216c9ae44cd6e69fc14dc747638f2d157c305566dea06011",
-          "size": 36112
+          "sha256": "332996af1be6cba0449e3b81e6889db4e513d1980dab32de1517f90cf4ce7721",
+          "size": 38133
         },
         {
           "path": "base.css",
-          "sha256": "056148042918ca2e8e623ed8c103df76b95f8c70097d698a9e61766c979b971c",
-          "size": 2123
+          "sha256": "51d7aa0b3142af5c6f5cd9cce2ba4493f4ba0d06f8e088472d508c93788cd055",
+          "size": 3544
         },
         {
           "path": "normal.css",
