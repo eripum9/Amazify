@@ -2,8 +2,8 @@
 
 # Test, audit, lint, and type-check tooling used by Windows CI.
 pip-audit==2.10.1
-pyright==1.1.411
+pyright==1.1.414
 pytest==9.1.1
 pytest-cov==7.1.0
 PyYAML==6.0.3
-ruff==0.16.3
+ruff==0.16.7
