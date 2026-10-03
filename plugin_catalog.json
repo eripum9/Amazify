@@ -68,13 +68,13 @@
       "id": "amazify.theme.signal-studio",
       "trust": "stock",
       "repository": "eripum9/Amazify",
-      "sourceCommit": "3d6ecbec6d154bd5c377e1e0a10e0c71f5774e6c",
+      "sourceCommit": "41d6e4dcb253ab59af9a54c28074feba2538b63b",
       "pluginRoot": "sample_plugins/amazify.theme.signal-studio",
       "minimumAmazifyVersion": "1.1.0",
       "manifest": {
         "id": "amazify.theme.signal-studio",
         "name": "Signal Studio",
-        "version": "0.2.1",
+        "version": "0.2.2",
         "author": "Amazify",
         "type": "theme",
         "description": "Rebuilds Amazon Music as a tactile studio interface with a navigation rail, editorial library views, reactive ambience, and a floating transport.",
@@ -116,7 +116,7 @@
       "files": [
         {
           "path": "manifest.json",
-          "sha256": "daaeb45953256b8a7eb61156922623aacd0d4d152eecb3a0815e484e85703613",
+          "sha256": "7484d85523f7dce57321b39bac860053e6f32aaaec04f3d6e78105d36ccd163d",
           "size": 1065
         },
         {
@@ -126,8 +126,8 @@
         },
         {
           "path": "theme.css",
-          "sha256": "3656b9e65aa5f1c05466cd76db3c5aa0dcbc4d014f2893205379c0b613849b59",
-          "size": 108450
+          "sha256": "5644ef0c3bcedf08c2f8e053ad74aac1370854651afc08cfebeb37e2babd2b96",
+          "size": 108498
         },
         {
           "path": "assets/space-grotesk.woff2",
