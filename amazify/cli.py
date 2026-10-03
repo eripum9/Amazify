@@ -63,6 +63,7 @@ DEVTOOLS_PORT_PATTERN = re.compile(r"(?:DevTools port:|with DevTools port)\s*(\d
 class ConnectedTarget:
     target: Target
     launched_by_amazify: bool = False
+    process_id: int | None = None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -403,7 +404,7 @@ def inject_connection(
         )
         if connection.launched_by_amazify:
             try:
-                tagged_windows = apply_amazify_window_identity(client)
+                tagged_windows = apply_amazify_window_identity(connection.process_id)
                 if tagged_windows:
                     LOG.info(
                         "Applied Amazify taskbar identity to %s Amazon Music window(s)",
@@ -599,6 +600,7 @@ def run_daemon(args: argparse.Namespace) -> int:
     client: DevToolsClient | None = None
     launch_pending = bool(getattr(args, "launch_on_start", False))
     owned_devtools_port: int | None = None
+    owned_process_id: int | None = None
     last_heartbeat = 0.0
     last_auto_attach = 0.0
 
@@ -634,6 +636,7 @@ def run_daemon(args: argparse.Namespace) -> int:
                     client.close()
                     client = None
                     owned_devtools_port = None
+                    owned_process_id = None
                     mark_daemon_state(
                         config,
                         status="idle",
@@ -647,6 +650,7 @@ def run_daemon(args: argparse.Namespace) -> int:
                     client.close()
                     client = None
                     owned_devtools_port = None
+                    owned_process_id = None
                     mark_daemon_state(
                         config,
                         status="idle",
@@ -658,6 +662,7 @@ def run_daemon(args: argparse.Namespace) -> int:
                     client.close()
                     client = None
                     owned_devtools_port = None
+                    owned_process_id = None
                     mark_daemon_state(
                         config,
                         status="error",
@@ -697,6 +702,7 @@ def run_daemon(args: argparse.Namespace) -> int:
                     )
                     if connection.launched_by_amazify:
                         owned_devtools_port = config.devtools_port
+                        owned_process_id = connection.process_id
                 elif now - last_auto_attach >= DAEMON_AUTO_ATTACH_SECONDS:
                     last_auto_attach = now
                     target = connect_to_known_devtools_port(
@@ -707,6 +713,7 @@ def run_daemon(args: argparse.Namespace) -> int:
                             target,
                             launched_by_amazify=config.devtools_port
                             == owned_devtools_port,
+                            process_id=owned_process_id,
                         )
 
                 if connection is not None:
@@ -996,10 +1003,11 @@ def connect_or_launch_result(
             else EXE_TARGET_TIMEOUT_SECONDS
         )
         try:
-            launch_candidate(candidate, config.devtools_port)
+            process_id = launch_candidate(candidate, config.devtools_port)
             return ConnectedTarget(
                 http.wait_for_amazon_music_target(timeout_seconds=timeout_seconds),
                 launched_by_amazify=True,
+                process_id=process_id,
             )
         except (LaunchError, DevToolsError, OSError) as exc:
             LOG.info("Launch candidate failed: %s (%s)", candidate.label, exc)

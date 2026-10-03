@@ -38,6 +38,7 @@ Amazify launches or attaches to the official Amazon Music desktop app, validates
 - **Persistent launch daemon** - starts at sign-in by default, handles launch requests, and remains ready after Amazon Music closes.
 - **Fast reconnects** - discovers DevTools ports from running Amazon Music processes and probes valid targets concurrently.
 - **Desktop integration** - provides the `Amazon Music (Amazify)` Start Menu shortcut, optional Desktop and taskbar shortcuts, and a real `amazify` CLI command.
+  Taskbar grouping applies only to the verified process launched through Amazify, not to windows with matching titles or independently started Amazon Music instances.
 - **Application updates** - checks official final GitHub releases, verifies the installer digest, and asks before opening the normal installer.
 - **Plugin assets** - plugins can package images, SVGs, fonts, and JSON alongside JavaScript and CSS.
 - **Shared plugin capabilities** - lifecycle-scoped, provider-namespaced APIs let reviewed plugins cooperate without exposing native credentials.

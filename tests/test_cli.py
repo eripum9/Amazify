@@ -44,6 +44,37 @@ def make_config(root: Path, devtools_port: int = 4444) -> RuntimeConfig:
 
 
 class CliDevToolsPortTests(unittest.TestCase):
+    def test_injection_tags_only_the_launched_process_id(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            config = make_config(Path(temp))
+            client = mock.Mock()
+            plugin_manager = mock.Mock()
+            plugin_manager.runtime_snapshot.return_value = []
+            plugin_manager.cached_catalog_payload.return_value = {"plugins": []}
+            with (
+                mock.patch("amazify.cli.DevToolsClient", return_value=client),
+                mock.patch("amazify.cli.NativeBindingBridge"),
+                mock.patch("amazify.cli.remember_devtools_port"),
+                mock.patch("amazify.cli.build_runtime_script", return_value="runtime"),
+                mock.patch("amazify.cli.apply_amazify_window_identity") as tag_identity,
+            ):
+                for launched in (False, True):
+                    tag_identity.reset_mock()
+                    inject_connection(
+                        config,
+                        plugin_manager,
+                        ConnectedTarget(
+                            target=mock.Mock(),
+                            launched_by_amazify=launched,
+                            process_id=9876,
+                        ),
+                        app_updater=mock.Mock(),
+                    )
+                    if launched:
+                        tag_identity.assert_called_once_with(9876)
+                    else:
+                        tag_identity.assert_not_called()
+
     def test_injection_uses_one_runtime_evaluation_with_inline_cleanup(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             config = make_config(Path(temp))
@@ -55,9 +86,7 @@ class CliDevToolsPortTests(unittest.TestCase):
             client.evaluate.return_value = {"ok": True}
             native_bridge = mock.Mock()
             native_bridge.session_nonce = "native-session"
-            native_bridge.response_callback_name = (
-                "__amazifyNativeResult_" + "c" * 36
-            )
+            native_bridge.response_callback_name = "__amazifyNativeResult_" + "c" * 36
             plugin_manager = mock.Mock()
             plugin_manager.runtime_snapshot.return_value = []
             plugin_manager.cached_catalog_payload.return_value = {"plugins": []}
@@ -439,7 +468,9 @@ class CliDevToolsPortTests(unittest.TestCase):
                     "amazify.cli.runtime_launch_candidates", return_value=candidates
                 ),
                 mock.patch("amazify.cli.amazon_music_is_running", return_value=False),
-                mock.patch("amazify.cli.launch_candidate") as launch_candidate,
+                mock.patch(
+                    "amazify.cli.launch_candidate", return_value=9876
+                ) as launch_candidate,
             ):
                 result = connect_or_launch_result(
                     config,
@@ -449,7 +480,38 @@ class CliDevToolsPortTests(unittest.TestCase):
 
             self.assertIs(result.target, target)
             self.assertTrue(result.launched_by_amazify)
+            self.assertEqual(result.process_id, 9876)
             launch_candidate.assert_called_once_with(candidates[0], 51394)
+
+    def test_connect_only_result_has_no_process_id(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            config = make_config(Path(temp), devtools_port=51394)
+            target = object()
+
+            class FakeDevToolsHttp:
+                def __init__(self, port: int) -> None:
+                    self.port = port
+
+                def wait_for_amazon_music_target(
+                    self, timeout_seconds: float
+                ) -> object:
+                    return target
+
+            with (
+                mock.patch("amazify.cli.DevToolsHttp", FakeDevToolsHttp),
+                mock.patch("amazify.cli.amazon_music_is_running", return_value=True),
+                mock.patch("amazify.cli.launch_candidate") as launch_candidate,
+            ):
+                result = connect_or_launch_result(
+                    config,
+                    connect_only=True,
+                    prefer_known_ports=False,
+                )
+
+            self.assertIs(result.target, target)
+            self.assertFalse(result.launched_by_amazify)
+            self.assertIsNone(result.process_id)
+            launch_candidate.assert_not_called()
 
 
 if __name__ == "__main__":
