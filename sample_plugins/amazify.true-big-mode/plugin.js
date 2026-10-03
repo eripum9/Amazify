@@ -33,7 +33,6 @@ let missingLyricsSince = 0;
 let centeredNoLyricsTrackKey = "";
 let presentLyricsTrackKey = "";
 let presentLyricsSince = 0;
-let syncTimer = null;
 let syncFrame = null;
 let intervalId = null;
 let lyricsCapability = null;
@@ -42,12 +41,12 @@ let releaseLyricsClaim = null;
 let lyricsClaimContainer = null;
 let lyricsClaimEnabled = null;
 let showLyrics = true;
+let autoFullscreen = false;
 let unsubscribeSettings = null;
 let unsubscribeLyricsSnapshot = null;
 let unsubscribeLyricsCapability = null;
-let fullscreenArmedUntil = 0;
 let fullscreenAttempted = false;
-let fullscreenEnteredByPlugin = false;
+let fullscreenRequestGeneration = 0;
 
 function getBigModeRoot() {
   const root = document.querySelector(ROOT_SELECTOR);
@@ -55,27 +54,6 @@ function getBigModeRoot() {
     return null;
   }
   return root;
-}
-
-function getFullscreenRequest() {
-  const element = document.documentElement;
-  return (
-    element.requestFullscreen ||
-    element.webkitRequestFullscreen ||
-    element.msRequestFullscreen
-  );
-}
-
-function getFullscreenExit() {
-  return document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
-}
-
-function isFullscreenActive() {
-  return Boolean(
-    document.fullscreenElement ||
-      document.webkitFullscreenElement ||
-      document.msFullscreenElement
-  );
 }
 
 function isVisibleElement(element) {
@@ -478,58 +456,42 @@ function syncProgress(root) {
 }
 
 function requestFullscreenOnce() {
-  if (fullscreenAttempted || isFullscreenActive() || Date.now() > fullscreenArmedUntil) {
+  if (
+    fullscreenAttempted ||
+    !autoFullscreen ||
+    !Amazify.fullscreen ||
+    Amazify.fullscreen.active
+  ) {
     return;
   }
-  const request = getFullscreenRequest();
-  if (typeof request !== "function") {
-    fullscreenAttempted = true;
-    return;
-  }
-
   fullscreenAttempted = true;
-  try {
-    Promise.resolve(request.call(document.documentElement))
-      .then(() => {
-        fullscreenEnteredByPlugin = isFullscreenActive();
-      })
-      .catch(() => {
-        fullscreenEnteredByPlugin = false;
-      });
-  } catch (_error) {
-    fullscreenEnteredByPlugin = false;
-  }
-}
-
-function maybeArmFullscreen(event) {
-  if (getBigModeRoot()) {
-    return;
-  }
-  const target = event.target instanceof Element ? event.target : null;
-  const transport = document.querySelector("#transportContainer");
-  if (!target || !transport || !transport.contains(target)) {
-    return;
-  }
-  if (!target.closest(".artWrapper, .artwork, .artImage")) {
-    return;
-  }
-  fullscreenArmedUntil = Date.now() + 3000;
+  const generation = fullscreenRequestGeneration;
+  Promise.resolve(Amazify.fullscreen.request())
+    .then((entered) => {
+      if (generation !== fullscreenRequestGeneration) {
+        if (entered === true && Amazify.fullscreen.release) {
+          Promise.resolve(Amazify.fullscreen.release()).catch(() => {});
+        }
+        return;
+      }
+    })
+    .catch(() => {});
 }
 
 function exitPluginFullscreen() {
-  if (!fullscreenEnteredByPlugin || !isFullscreenActive()) {
-    fullscreenEnteredByPlugin = false;
-    return;
+  if (Amazify.fullscreen && typeof Amazify.fullscreen.release === "function") {
+    Promise.resolve(Amazify.fullscreen.release()).catch(() => {});
   }
-  const exit = getFullscreenExit();
-  fullscreenEnteredByPlugin = false;
-  if (typeof exit === "function") {
-    try {
-      Promise.resolve(exit.call(document)).catch(() => {});
-    } catch (_error) {
-      // Ignore browser-specific fullscreen teardown failures.
-    }
-  }
+}
+
+function requestFullscreenForNativeOpen(event) {
+  if (!autoFullscreen || fullscreenAttempted || getBigModeRoot()) return;
+  if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+  const target = event.target instanceof Element ? event.target : null;
+  const transport = document.querySelector("#transportContainer");
+  if (!target || !transport || !transport.contains(target)) return;
+  if (!target.closest(".trackMetadataWrapper .albumArt")) return;
+  requestFullscreenOnce();
 }
 
 function rememberArtAttributes(art) {
@@ -1325,7 +1287,7 @@ function syncBigMode() {
     unbindAlbumArt();
     restorePolishedBigMode();
     fullscreenAttempted = false;
-    fullscreenArmedUntil = 0;
+    fullscreenRequestGeneration += 1;
     exitPluginFullscreen();
     return;
   }
@@ -1352,24 +1314,22 @@ function syncBigMode() {
 }
 
 function scheduleSync() {
-  if (syncTimer !== null) {
-    return;
-  }
-  syncTimer = window.setTimeout(() => {
-    syncTimer = null;
-    if (syncFrame !== null) {
-      return;
-    }
-    syncFrame = window.requestAnimationFrame(() => {
-      syncFrame = null;
-      syncBigMode();
-    });
-  }, 120);
+  if (syncFrame !== null) return;
+  syncFrame = window.requestAnimationFrame(() => {
+    syncFrame = null;
+    syncBigMode();
+  });
 }
 
 if (Amazify.settings && typeof Amazify.settings.subscribe === "function") {
   unsubscribeSettings = Amazify.settings.subscribe((settings) => {
     showLyrics = settings.showLyrics !== false;
+    const wasAutoFullscreen = autoFullscreen;
+    autoFullscreen = settings.autoFullscreen === true;
+    if (wasAutoFullscreen && !autoFullscreen) {
+      fullscreenRequestGeneration += 1;
+      exitPluginFullscreen();
+    }
     const root = getBigModeRoot();
     if (root) syncLyricsPresentation(root);
     scheduleSync();
@@ -1385,21 +1345,25 @@ unsubscribeLyricsCapability = Amazify.capabilities.subscribe(
   setLyricsCapability
 );
 
-observer = new MutationObserver(scheduleSync);
+observer = new MutationObserver((mutations) => {
+  if (mutations.length && mutations.every((mutation) => {
+    const node = mutation.target.nodeType === 1 ? mutation.target : mutation.target.parentElement;
+    return node && node.closest(".lyricsWrapper, .amazify-true-big-mode-progress");
+  })) return;
+  scheduleSync();
+});
 observer.observe(document.documentElement, {
   childList: true,
   subtree: true,
 });
 intervalId = window.setInterval(syncFastBigModeState, 350);
-document.addEventListener("click", maybeArmFullscreen, true);
+document.addEventListener("click", requestFullscreenForNativeOpen, true);
+document.addEventListener("keydown", requestFullscreenForNativeOpen, true);
 syncBigMode();
 
 return () => {
   if (observer) {
     observer.disconnect();
-  }
-  if (syncTimer !== null) {
-    window.clearTimeout(syncTimer);
   }
   if (syncFrame !== null) {
     window.cancelAnimationFrame(syncFrame);
@@ -1407,7 +1371,9 @@ return () => {
   if (intervalId !== null) {
     window.clearInterval(intervalId);
   }
-  document.removeEventListener("click", maybeArmFullscreen, true);
+  fullscreenRequestGeneration += 1;
+  document.removeEventListener("click", requestFullscreenForNativeOpen, true);
+  document.removeEventListener("keydown", requestFullscreenForNativeOpen, true);
   if (unsubscribeSettings) unsubscribeSettings();
   if (unsubscribeLyricsCapability) unsubscribeLyricsCapability();
   if (unsubscribeLyricsSnapshot) unsubscribeLyricsSnapshot();

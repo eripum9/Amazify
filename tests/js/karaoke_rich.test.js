@@ -70,7 +70,7 @@ test('same-position RAF does not rewrite active line classes', () => {
   k.Renderer.prototype.update.call(renderer, 100, false);
   k.Renderer.prototype.update.call(renderer, 100, false);
   k.Renderer.prototype.update.call(renderer, 116, false);
-  assert.equal(toggles,1);
+  assert.equal(toggles,2);
   assert.equal(writes,2);
 });
 
@@ -89,6 +89,37 @@ test('word lifts follow syllable timing, reset on seek, and do not restart while
     [0,'is-singing',true], [500,'is-singing',false], [0,'is-singing',false]
   ]);
 });
+test('upcoming lyric state follows line boundaries and backward seeks without per-frame writes', () => {
+  const s = setup(), k = s.context.Karaoke;
+  vm.runInContext(fs.readFileSync(path.join(root, 'renderer.js'), 'utf8'), s.context);
+  const future = [true, true, true];
+  let writes = 0;
+  const renderer = {model:{lines:[0,1000,2000].map(start => ({startMs:start,endMs:start+1000}))},
+    activeLines:new Set(),activeLine:-1,futureBoundary:-2,lastTime:null,manualUntil:0,centerActive(){},
+    lines:future.map((_,index) => ({tokens:[],row:{classList:{toggle(name,value){
+      if(name==='is-upcoming'){future[index]=value;writes++;}
+    }}}}))};
+  k.Renderer.prototype.update.call(renderer,1500,false);
+  assert.deepEqual(future,[false,false,true]);
+  k.Renderer.prototype.update.call(renderer,1600,false);
+  assert.equal(writes,3);
+  k.Renderer.prototype.update.call(renderer,100,false);
+  assert.deepEqual(future,[false,true,true]);
+  k.Renderer.prototype.update.call(renderer,2100,false);
+  assert.deepEqual(future,[false,false,false]);
+});
+
+test('manual retry starts a fresh lookup after a miss and ignores duplicate clicks', async () => {
+  const s=setup(); s.session.setTrack(s.track); s.session.setDefaultHost(s.host); await flush();
+  s.requests[0].resolve({status:'no-lyrics',trackKey:s.track.key}); await flush();
+  s.session.retry(); s.session.retry(); await flush();
+  assert.equal(s.requests.length,2);
+  assert.notEqual(s.requests[0].key,s.requests[1].key);
+  s.requests[1].resolve({status:'ready',trackKey:s.track.key,payload:model(s.track.key)}); await flush();
+  assert.equal(s.session.snapshot().enhanced,true);
+  s.session.destroy();
+});
+
 test('lazy loading, no refetch loop after a miss, native lyrics preserved', async () => {
   const s = setup();
   s.session.setTrack(s.track); await flush(); assert.equal(s.requests.length, 0);

@@ -95,9 +95,9 @@ Stock plugins are reviewed catalog entries maintained in this repository. Their 
 
 | Plugin | Version | Type | Description |
 |---|---:|---|---|
-| [True Big Mode](sample_plugins/amazify.true-big-mode/) | `0.2.1` | UI | Replaces Big Mode with a full-window layout, dynamic album-art ambience, custom playback controls, a draggable timeline, and a centered no-lyrics state |
-| [Signal Studio](sample_plugins/amazify.theme.signal-studio/) | `0.2.0` | Theme | Reworks the full interface with a compact navigation rail, custom typography and textures, reactive ambience, user-selectable colors, redesigned panels, and a floating transport |
-| [Karaoke Lyrics](sample_plugins/amazify.karaoke-lyrics/) | `0.2.0` | UI | Optional word/syllable highlighting from Better Lyrics and Unison, using the current presentation's typography and colors; otherwise leaves native lyrics untouched. Requires Amazify `1.1.2` (unreleased source). |
+| [True Big Mode](sample_plugins/amazify.true-big-mode/) | `0.2.3` | UI | Replaces Big Mode with a full-window layout, dynamic album-art ambience, custom playback controls, a draggable timeline, optional automatic fullscreen, and a centered no-lyrics state |
+| [Signal Studio](sample_plugins/amazify.theme.signal-studio/) | `0.2.1` | Theme | Reworks the full interface with a compact navigation rail, custom typography and textures, reactive ambience, user-selectable colors, redesigned panels, and a floating transport |
+| [Karaoke Lyrics](sample_plugins/amazify.karaoke-lyrics/) | `0.2.5` | UI | Optional word/syllable highlighting from Better Lyrics and Unison, using the current presentation's typography and colors; otherwise leaves native lyrics untouched. Requires Amazify `1.1.2`. |
 
 True Big Mode is inspired by [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics).
 
@@ -203,6 +203,10 @@ values through `Amazify.settings`, subscribe to live changes, or register an
 advanced owner-scoped UI with `Amazify.ui.addSettingsSection`. See the
 [plugin settings documentation](docs/plugin-settings.md) for the complete
 schema and lifecycle.
+
+The [plugin API reference](docs/plugin-api.md) documents the owner-scoped
+`Amazify.fullscreen` API. The core F11 shortcut and True Big Mode's optional
+**Enter fullscreen automatically** setting use this shared fullscreen implementation.
 
 Declared `dom-read`, `dom-write`, `dom-style`, and `network` permissions are disclosure and consent signals, not a complete JavaScript sandbox. Plugins run in the Amazon Music renderer and can affect what the signed-in user can see and do. The native `lyrics-provider` permission is reserved for Karaoke Lyrics. It sends song title, artist, album and duration to two fixed rich-lyrics services, without Amazon credentials or Spotify tokens.
 

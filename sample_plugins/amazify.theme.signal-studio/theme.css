@@ -44,7 +44,7 @@ body.amazify-signal-studio *::after {
 body.amazify-signal-studio #caterpillar,
 body.amazify-signal-studio #root,
 body.amazify-signal-studio #app {
-  background: var(--signal-canvas) !important;
+  background: transparent !important;
   color: var(--signal-ink) !important;
   font-family: inherit !important;
 }
@@ -60,7 +60,10 @@ body.amazify-signal-studio textarea {
 body.amazify-signal-studio .signal-studio-ambience {
   position: fixed;
   z-index: 0;
-  inset: var(--signal-top-height) 0 0 var(--signal-rail-width);
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: var(--signal-rail-width);
   overflow: hidden;
   pointer-events: none;
   background-color: var(--signal-canvas);
@@ -72,7 +75,10 @@ body.amazify-signal-studio .signal-studio-ambience {
 body.amazify-signal-studio .signal-studio-ambience::before {
   content: "";
   position: absolute;
-  inset: -16%;
+  top: -16%;
+  right: -16%;
+  bottom: -16%;
+  left: -16%;
   background-image: var(--signal-studio-artwork);
   background-position: 85% 30%;
   background-repeat: no-repeat;
@@ -90,7 +96,10 @@ body.amazify-signal-studio.signal-studio-has-artwork .signal-studio-ambience::be
 body.amazify-signal-studio .signal-studio-ambience::after {
   content: "";
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background:
     linear-gradient(90deg, rgba(12, 14, 13, 0.96) 0%, rgba(12, 14, 13, 0.65) 46%, rgba(12, 14, 13, 0.88) 100%),
     repeating-linear-gradient(90deg, transparent 0, transparent 119px, rgba(242, 245, 236, 0.025) 120px);
@@ -723,12 +732,20 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .sec
 }
 
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .controlContainer {
+  position: relative !important;
+  z-index: 6 !important;
   display: flex !important;
   gap: 6px !important;
+  pointer-events: auto !important;
 }
 
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .controlContainer > button,
-body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .controlContainer > button > button {
+body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .controlContainer > button > button,
+body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .controlContainer > [role="button"],
+body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .controlContainer > * > button,
+body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .controlContainer > * > [role="button"] {
+  position: relative !important;
+  z-index: 1 !important;
   width: 34px !important;
   height: 34px !important;
   min-width: 34px !important;
@@ -738,6 +755,12 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .con
   border-radius: 50% !important;
   background: var(--signal-surface) !important;
   color: var(--signal-ink) !important;
+  pointer-events: auto !important;
+}
+
+body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .controlContainer > .prevButton > button,
+body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .controlContainer > .nextButton > button {
+  pointer-events: none !important;
 }
 
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .controlContainer > button:hover > button {
@@ -1232,7 +1255,10 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) #transportContaine
 
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) #transportContainer:not(.childViewShowing) #transport {
   position: absolute !important;
-  inset: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
   width: 100% !important;
   height: 100% !important;
   pointer-events: none !important;
@@ -2256,8 +2282,8 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) #transportContaine
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .backgroundImage.nonBlurred {
   width: 100% !important;
   max-width: none !important;
-  background-color: var(--signal-canvas-raised) !important;
-  background-image: url("./assets/grain.svg") !important;
+  background-color: transparent !important;
+  background-image: none !important;
   background-position: 0 0 !important;
   background-repeat: repeat !important;
   background-size: auto !important;
@@ -2271,8 +2297,14 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .hea
   background: rgba(12, 14, 13, 0.28) !important;
 }
 
+body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .miniHeaderContainer {
+  right: 0 !important;
+  left: var(--signal-rail-width) !important;
+  width: auto !important;
+}
+
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .miniHeader {
-  width: 100% !important;
+  width: auto !important;
   max-width: none !important;
   border-bottom: 1px solid var(--signal-line) !important;
   background: rgba(12, 14, 13, 0.94) !important;
@@ -2280,6 +2312,8 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .min
 }
 
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .findHeader {
+  margin-right: 26px !important;
+  margin-left: 26px !important;
   margin-bottom: 28px !important;
   padding-bottom: 24px !important;
   border-bottom: 1px solid var(--signal-line) !important;
@@ -2494,6 +2528,10 @@ body.amazify-signal-studio.amazify-true-big-mode-active .signal-studio-topbar {
   body.amazify-signal-studio:not(.amazify-true-big-mode-active) #appchrome .historyNavButtons,
   body.amazify-signal-studio .signal-studio-context {
     display: none !important;
+  }
+
+  body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .miniHeaderContainer {
+    left: 0 !important;
   }
 
   body.amazify-signal-studio .signal-studio-topbar {

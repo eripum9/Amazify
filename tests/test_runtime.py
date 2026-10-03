@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import unittest
+from pathlib import Path
 
 from amazify.runtime import build_cleanup_script, build_runtime_script
+
+ROOT = Path(__file__).resolve().parent.parent
 
 
 class RuntimeScriptTests(unittest.TestCase):
@@ -252,6 +256,94 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertNotIn("window.Amazify.cleanup", script)
         self.assertIn("data-amazify-root", script)
         self.assertIn("data-amazify-style-id", script)
+
+    def test_fullscreen_api_exposes_dynamic_state_and_safe_promises(self) -> None:
+        script = build_runtime_script(
+            bridge_url="http://127.0.0.1:12345",
+            bridge_token="token",
+            plugins=[],
+        )
+
+        self.assertIn("fullscreenAvailable", script)
+        self.assertIn("fullscreenchange", script)
+        self.assertIn("fullscreenerror", script)
+        self.assertIn('requestFullscreen(element || document.documentElement, pluginId)', script)
+        self.assertIn("lifecycle.active ? fullscreenSnapshot()", script)
+        self.assertIn('get: () => lifecycle.active && fullscreenAvailable()', script)
+        self.assertIn('get: () => lifecycle.active && Boolean(fullscreenElement())', script)
+        self.assertIn('return NATIVE_PROMISE.resolve(false)', script)
+        self.assertIn('Fullscreen requires a user gesture.', script)
+        self.assertIn('Fullscreen request was rejected.', script)
+        self.assertIn('webkitRequestFullscreen', script)
+        self.assertIn('nativeResult = request.call(element)', script)
+        self.assertIn('FULLSCREEN_CONFIRM_TIMEOUT', script)
+        self.assertIn('fullscreenPendingRequests', script)
+        self.assertIn('fullscreenRequestOwnsSession', script)
+        self.assertIn('fullscreenSessionSequence', script)
+
+    def test_f11_is_core_qol_setting_without_f10_or_keyboard_injection(self) -> None:
+        script = build_runtime_script(
+            bridge_url="http://127.0.0.1:12345",
+            bridge_token="token",
+            plugins=[],
+        )
+
+        self.assertIn('fullscreenShortcut: true', script)
+        self.assertIn('<div class="amazify-section-title">App QoL</div>', script)
+        self.assertIn('data-amazify-setting="fullscreenShortcut"', script)
+        self.assertIn('event.key !== "F11"', script)
+        self.assertIn('if (event.repeat || state.fullscreenShortcutDown)', script)
+        self.assertIn('NATIVE_ADD_EVENT_LISTENER(window, "keydown", handleFullscreenShortcut)', script)
+        self.assertIn('NATIVE_ADD_EVENT_LISTENER(window, "keyup", handleFullscreenShortcut)', script)
+        self.assertIn('NATIVE_ADD_EVENT_LISTENER(window, "blur", handleFullscreenWindowBlur)', script)
+        self.assertIn('if (event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) return;', script)
+        self.assertNotIn('event.key !== "F10"', script)
+        self.assertNotIn('KeyboardEvent', script)
+        self.assertNotIn('dispatchEvent(new KeyboardEvent', script)
+
+    def test_fullscreen_listeners_and_plugin_subscriptions_are_cleaned_up(self) -> None:
+        script = build_runtime_script(
+            bridge_url="http://127.0.0.1:12345",
+            bridge_token="token",
+            plugins=[],
+        )
+
+        self.assertIn('fullscreenSubscribers: new NATIVE_MAP()', script)
+        self.assertIn('NATIVE_MAP_DELETE(state.fullscreenSubscribers, pluginId)', script)
+        self.assertIn('NATIVE_MAP_CLEAR(state.fullscreenSubscribers)', script)
+        self.assertIn('pluginLifecycles: new NATIVE_MAP()', script)
+        self.assertIn('lifecycle.active = false', script)
+        self.assertIn('release: () => lifecycle.active ? releaseFullscreenForPlugin(pluginId)', script)
+        self.assertIn('exitFullscreen(true)', script)
+        self.assertIn('NATIVE_REMOVE_EVENT_LISTENER(document, "fullscreenchange", handleFullscreenChange)', script)
+        self.assertIn('NATIVE_REMOVE_EVENT_LISTENER(window, "keydown", handleFullscreenShortcut)', script)
+        self.assertIn('NATIVE_REMOVE_EVENT_LISTENER(window, "keyup", handleFullscreenShortcut)', script)
+        self.assertIn('NATIVE_REMOVE_EVENT_LISTENER(window, "blur", handleFullscreenWindowBlur)', script)
+
+    def test_true_big_mode_auto_fullscreen_setting_uses_runtime_api_and_owns_exit(self) -> None:
+        manifest = json.loads(
+            (ROOT / "sample_plugins" / "amazify.true-big-mode" / "manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        settings = {setting["id"]: setting for setting in manifest["settings"]}
+        self.assertEqual(settings["autoFullscreen"]["type"], "boolean")
+        self.assertFalse(settings["autoFullscreen"]["default"])
+
+        source = (ROOT / "sample_plugins" / "amazify.true-big-mode" / "plugin.js").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('autoFullscreen = settings.autoFullscreen === true', source)
+        self.assertIn('Amazify.fullscreen.request()', source)
+        self.assertIn('Amazify.fullscreen.release()', source)
+        self.assertIn('if (entered === true && Amazify.fullscreen.release)', source)
+        self.assertIn('fullscreenRequestGeneration', source)
+        self.assertIn('document.addEventListener("click", requestFullscreenForNativeOpen, true)', source)
+        self.assertIn('document.addEventListener("keydown", requestFullscreenForNativeOpen, true)', source)
+        self.assertIn('if (generation !== fullscreenRequestGeneration)', source)
+        self.assertIn('Promise.resolve(Amazify.fullscreen.release())', source)
+        self.assertNotIn('maybeArmFullscreen', source)
+        self.assertNotIn('requestFullscreen.call', source)
 
 
 if __name__ == "__main__":

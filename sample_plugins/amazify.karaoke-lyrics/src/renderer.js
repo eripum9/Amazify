@@ -44,6 +44,7 @@ Karaoke.Renderer = function (onSeek) {
   this.lines = [];
   this.activeLines = new Set();
   this.activeLine = -1;
+  this.futureBoundary = -2;
   this.lastTime = null;
   this.manualUntil = 0;
   this.programmaticUntil = 0;
@@ -79,13 +80,14 @@ Karaoke.Renderer.prototype.setModel = function (model) {
   this.lastTime = null;
   this.manualUntil = 0;
   this.activeLine = -1;
+  this.futureBoundary = -2;
   this.activeLines.clear();
   this.lines = [];
   this.scroller.textContent = "";
   if (!model) { this.release(); return; }
   const renderer = this;
   model.lines.forEach(function (line) {
-    const row = Karaoke.presentationElement(null, "li", "lyricsLine amazify-karaoke-line");
+    const row = Karaoke.presentationElement(null, "li", "lyricsLine amazify-karaoke-line is-upcoming");
     const text = Karaoke.presentationElement(null, "span", "lyricsText");
     row.appendChild(text);
     row.tabIndex = 0;
@@ -126,6 +128,13 @@ Karaoke.Renderer.prototype.update = function (timeMs, forceScroll) {
   this.lastTime = timeMs;
   if (seek) this.manualUntil = 0;
   const last = Karaoke.findActiveLine(this.model.lines, timeMs);
+  // Update timing classes at line boundaries, including backward seeks, not every frame.
+  if (last !== this.futureBoundary) {
+    this.lines.forEach(function (line, index) {
+      line.row.classList.toggle("is-upcoming", index > last);
+    });
+    this.futureBoundary = last;
+  }
   const active = new Set();
   // Overlapping lead/background lines can both be active. DOM writes remain changed-only.
   for (let index = 0; index <= last; index += 1) {

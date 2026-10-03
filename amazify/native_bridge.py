@@ -11,6 +11,7 @@ from typing import Any
 
 from .app_updater import ApplicationUpdater, UpdateError
 from .devtools import DevToolsClient, DevToolsError
+from .fullscreen import FullscreenController
 from .lyrics_provider import LyricsProviderError, LyricsProviderService
 from .plugin_manager import PluginError, PluginManager
 
@@ -22,6 +23,7 @@ MAX_PENDING_LYRICS_LOADS = 8
 ALLOWED_COMMANDS = frozenset(
     {
         "state.get",
+        "window.fullscreen.set",
         "plugins.enable",
         "plugins.disable",
         "catalog.refresh",
@@ -60,6 +62,7 @@ class NativeBindingBridge:
         self._futures: set[Future[dict[str, Any]]] = set()
         self._loads: dict[str, threading.Event] = {}
         self._closed = False
+        self.fullscreen = FullscreenController()
 
     @property
     def session_nonce(self) -> str:
@@ -122,6 +125,15 @@ class NativeBindingBridge:
             raise PluginError(f"Native command not allowed: {name}")
         if name == "state.get":
             return self._state_payload()
+        if name == "window.fullscreen.set":
+            if self._closed:
+                raise PluginError("Native bridge is closed")
+            active = payload.get("active")
+            if type(active) is not bool:
+                raise ValueError("Fullscreen active must be a boolean")
+            if active and not self.client.evaluate("Boolean(document.fullscreenElement || document.webkitFullscreenElement)"):
+                raise PluginError("Browser fullscreen must be active first")
+            return self.fullscreen.set_active(active)
         if name == "plugins.enable":
             self.plugin_manager.enable(str(payload.get("pluginId", "")))
             return self._state_payload()
@@ -250,6 +262,10 @@ class NativeBindingBridge:
             if self._closed:
                 return
             self._closed = True
+            try:
+                self.fullscreen.close()
+            except OSError:
+                LOG.exception("Could not restore the Amazon Music window frame")
             futures = list(self._futures)
             for canceled in self._loads.values():
                 canceled.set()

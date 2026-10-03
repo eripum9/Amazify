@@ -142,14 +142,16 @@ def build_runtime_script(
   function readRuntimePreferences() {{
     const defaults = {{
       autoCheckUpdates: true,
-      autoCheckAppUpdates: true
+      autoCheckAppUpdates: true,
+      fullscreenShortcut: true
     }};
     try {{
       const saved = NATIVE_JSON_PARSE(window.localStorage.getItem(SETTINGS_STORAGE_KEY) || "{{}}");
       if (!saved || typeof saved !== "object") return defaults;
       return {{
         autoCheckUpdates: typeof saved.autoCheckUpdates === "boolean" ? saved.autoCheckUpdates : defaults.autoCheckUpdates,
-        autoCheckAppUpdates: typeof saved.autoCheckAppUpdates === "boolean" ? saved.autoCheckAppUpdates : defaults.autoCheckAppUpdates
+        autoCheckAppUpdates: typeof saved.autoCheckAppUpdates === "boolean" ? saved.autoCheckAppUpdates : defaults.autoCheckAppUpdates,
+        fullscreenShortcut: typeof saved.fullscreenShortcut === "boolean" ? saved.fullscreenShortcut : defaults.fullscreenShortcut
       }};
     }} catch (_error) {{
       return defaults;
@@ -179,6 +181,16 @@ def build_runtime_script(
     settingsSections: new NATIVE_MAP(),
     settingsRenderCleanups: new NATIVE_MAP(),
     pluginSettingSubscribers: new NATIVE_MAP(),
+    fullscreenSubscribers: new NATIVE_MAP(),
+    fullscreenRequests: new NATIVE_MAP(),
+    fullscreenPendingRequests: new NATIVE_MAP(),
+    fullscreenRequestSequence: 0,
+    fullscreenSessionSequence: 0,
+    fullscreenCurrentSession: null,
+    pluginLifecycles: new NATIVE_MAP(),
+    fullscreenError: "",
+    fullscreenShortcutDown: false,
+    desktopFullscreenActive: false,
     nativeRequests: new NATIVE_MAP(),
     nativeSequence: 0,
     lastError: "",
@@ -191,6 +203,309 @@ def build_runtime_script(
     preferences: readRuntimePreferences(),
     pluginSettings: readStoredPluginSettings()
   }};
+
+  function fullscreenElement() {{
+    return document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement || null;
+  }}
+
+  function fullscreenRequestMethod(element) {{
+    if (!element) return null;
+    return element.requestFullscreen || element.webkitRequestFullscreen || element.msRequestFullscreen || null;
+  }}
+
+  function fullscreenExitMethod() {{
+    return document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen || null;
+  }}
+
+  function fullscreenAvailable() {{
+    const enabled = document.fullscreenEnabled !== undefined
+      ? document.fullscreenEnabled
+      : document.webkitFullscreenEnabled !== undefined
+        ? document.webkitFullscreenEnabled
+        : document.msFullscreenEnabled;
+    if (enabled !== undefined) return enabled === true && typeof fullscreenRequestMethod(document.documentElement) === "function";
+    return typeof fullscreenRequestMethod(document.documentElement) === "function";
+  }}
+
+  function fullscreenSnapshot() {{
+    return NATIVE_FREEZE({{
+      available: fullscreenAvailable(),
+      active: Boolean(fullscreenElement()),
+      element: fullscreenElement()
+    }});
+  }}
+
+  function notifyFullscreenSubscribers() {{
+    const snapshot = fullscreenSnapshot();
+    NATIVE_MAP_FOR_EACH(state.fullscreenSubscribers, (records) => {{
+      for (let index = 0; index < records.length; index += 1) {{
+        const record = records[index];
+        if (!record.active) continue;
+        try {{ record.listener(snapshot); }} catch (error) {{
+          console.warn("[Amazify] Fullscreen subscriber failed", record.pluginId, error);
+        }}
+      }}
+    }});
+  }}
+
+  function reportFullscreenError(message) {{
+    if (!runtimeActive) return;
+    state.fullscreenError = message;
+    if (state.activePanel === "settings") renderPanel();
+    notifyFullscreenSubscribers();
+  }}
+
+  const FULLSCREEN_CONFIRM_TIMEOUT = 1000;
+
+  function noteFullscreenSession(element) {{
+    if (!element) {{
+      state.fullscreenCurrentSession = null;
+      return null;
+    }}
+    if (state.fullscreenCurrentSession && state.fullscreenCurrentSession.element === element) {{
+      return state.fullscreenCurrentSession;
+    }}
+    const session = {{ id: ++state.fullscreenSessionSequence, element }};
+    state.fullscreenCurrentSession = session;
+    return session;
+  }}
+
+  function fullscreenRequestOwnsSession(ownerRequest) {{
+    const currentSession = state.fullscreenCurrentSession;
+    return Boolean(
+      ownerRequest && ownerRequest.entered && ownerRequest.element === fullscreenElement() &&
+      currentSession && ownerRequest.sessionId === currentSession.id &&
+      ownerRequest.element === currentSession.element
+    );
+  }}
+
+  function finishFullscreenRequest(request, result) {{
+    if (request.finished) return;
+    request.finished = true;
+    request.settled = true;
+    if (request.timer !== null) NATIVE_CLEAR_TIMEOUT(request.timer);
+    NATIVE_MAP_DELETE(state.fullscreenPendingRequests, request.token);
+    if (request.ownerId && (!result || !request.active) && NATIVE_MAP_GET(state.fullscreenRequests, request.ownerId) === request) {{
+      NATIVE_MAP_DELETE(state.fullscreenRequests, request.ownerId);
+    }}
+    if (!result && request.ownerId) request.entered = false;
+    if (typeof request.resolve === "function") request.resolve(result === true);
+  }}
+
+  function confirmFullscreenRequest(request, allowSettledState) {{
+    if (request.finished) return;
+    const current = fullscreenElement();
+    if (!current || current !== request.target) return;
+    if (!request.active && !request.eventObserved && !request.immediateObserved) return;
+    if (!request.eventObserved && !request.immediateObserved && (!allowSettledState || state.fullscreenCurrentSession)) return;
+    const session = state.fullscreenCurrentSession || noteFullscreenSession(current);
+    request.entered = true;
+    request.element = current;
+    request.sessionId = session.id;
+    if (request.ownerId && !request.active) {{
+      const shouldExit = fullscreenRequestOwnsSession(request);
+      request.entered = false;
+      finishFullscreenRequest(request, false);
+      if (shouldExit) exitFullscreen(true);
+      return;
+    }}
+    const observedByEvent = request.eventObserved;
+    finishFullscreenRequest(request, true);
+    if (!observedByEvent) notifyFullscreenSubscribers();
+  }}
+
+  function rejectFullscreenRequest(request, message) {{
+    if (request.finished) return;
+    finishFullscreenRequest(request, false);
+    reportFullscreenError(message);
+  }}
+
+  function requestFullscreen(element = document.documentElement, ownerId = "") {{
+    if (!runtimeActive || !fullscreenAvailable()) {{
+      reportFullscreenError("Fullscreen is unavailable in this browser.");
+      return NATIVE_PROMISE.resolve(false);
+    }}
+    if (fullscreenElement()) return NATIVE_PROMISE.resolve(false);
+    state.fullscreenCurrentSession = null;
+    NATIVE_MAP_FOR_EACH(state.fullscreenRequests, (previousRequest) => {{
+      previousRequest.entered = false;
+      previousRequest.element = null;
+      previousRequest.sessionId = 0;
+    }});
+    const activation = window.navigator && window.navigator.userActivation;
+    if (activation && activation.isActive === false) {{
+      reportFullscreenError("Fullscreen requires a user gesture.");
+      return NATIVE_PROMISE.resolve(false);
+    }}
+    const request = fullscreenRequestMethod(element);
+    if (typeof request !== "function") {{
+      reportFullscreenError("Fullscreen is unavailable in this browser.");
+      return NATIVE_PROMISE.resolve(false);
+    }}
+    let previousOwnerRequest = null;
+    if (ownerId) {{
+      previousOwnerRequest = NATIVE_MAP_GET(state.fullscreenRequests, ownerId);
+      if (previousOwnerRequest && !previousOwnerRequest.settled) {{
+        return NATIVE_PROMISE.resolve(false);
+      }}
+    }}
+    if (previousOwnerRequest) NATIVE_MAP_DELETE(state.fullscreenRequests, ownerId);
+    NATIVE_MAP_FOR_EACH(state.fullscreenPendingRequests, (previousRequest) => {{
+      if (previousRequest.finished) return;
+      previousRequest.active = false;
+      finishFullscreenRequest(previousRequest, false);
+    }});
+    const requestToken = ++state.fullscreenRequestSequence;
+    const ownerRequest = {{
+      ownerId,
+      token: requestToken,
+      target: element,
+      active: true,
+      entered: false,
+      settled: false,
+      finished: false,
+      timer: null,
+      resolve: null,
+      eventObserved: false,
+      immediateObserved: false
+    }};
+    if (ownerId) NATIVE_MAP_SET(state.fullscreenRequests, ownerId, ownerRequest);
+    const result = new NATIVE_PROMISE((resolve) => {{
+      ownerRequest.resolve = resolve;
+    }});
+    NATIVE_MAP_SET(state.fullscreenPendingRequests, requestToken, ownerRequest);
+    ownerRequest.timer = NATIVE_SET_TIMEOUT(() => {{
+      confirmFullscreenRequest(ownerRequest, false);
+      if (!ownerRequest.finished) rejectFullscreenRequest(ownerRequest, "Fullscreen entry was not confirmed.");
+    }}, FULLSCREEN_CONFIRM_TIMEOUT);
+    let nativeResult;
+    try {{
+      nativeResult = request.call(element);
+    }} catch (_error) {{
+      rejectFullscreenRequest(ownerRequest, "Fullscreen request was rejected.");
+      return result;
+    }}
+    if (fullscreenElement() === element) {{
+      ownerRequest.immediateObserved = true;
+      if (!state.fullscreenCurrentSession) noteFullscreenSession(element);
+      confirmFullscreenRequest(ownerRequest, true);
+    }}
+    NATIVE_PROMISE.resolve(nativeResult).then(() => {{
+      ownerRequest.nativeSettled = true;
+      confirmFullscreenRequest(ownerRequest, nativeResult !== undefined);
+    }}).catch(() => {{
+      rejectFullscreenRequest(ownerRequest, "Fullscreen request was rejected.");
+    }});
+    return result;
+  }}
+
+  function exitFullscreen(allowStopped = false) {{
+    if (!runtimeActive && !allowStopped) return NATIVE_PROMISE.resolve(false);
+    if (!fullscreenElement()) return NATIVE_PROMISE.resolve(false);
+    const exit = fullscreenExitMethod();
+    if (typeof exit !== "function") {{
+      reportFullscreenError("Fullscreen exit is unavailable in this browser.");
+      return NATIVE_PROMISE.resolve(false);
+    }}
+    try {{
+      return NATIVE_PROMISE.resolve(exit.call(document)).then(() => {{
+        notifyFullscreenSubscribers();
+        return true;
+      }}).catch(() => {{
+        reportFullscreenError("Fullscreen exit was rejected.");
+        return false;
+      }});
+    }} catch (_error) {{
+      reportFullscreenError("Fullscreen exit was rejected.");
+      return NATIVE_PROMISE.resolve(false);
+    }}
+  }}
+
+  function subscribeFullscreenForPlugin(pluginId, listener) {{
+    if (typeof listener !== "function") throw new TypeError("Fullscreen subscriber must be a function");
+    const records = NATIVE_MAP_GET(state.fullscreenSubscribers, pluginId) || [];
+    const record = {{ pluginId, listener, active: true }};
+    records[records.length] = record;
+    NATIVE_MAP_SET(state.fullscreenSubscribers, pluginId, records);
+    try {{ listener(fullscreenSnapshot()); }} catch (error) {{
+      console.warn("[Amazify] Fullscreen subscriber failed", pluginId, error);
+    }}
+    return () => {{ record.active = false; }};
+  }}
+
+  function releaseFullscreenForPlugin(pluginId) {{
+    const ownerRequest = NATIVE_MAP_GET(state.fullscreenRequests, pluginId);
+    if (!ownerRequest) return NATIVE_PROMISE.resolve(false);
+    const shouldExit = fullscreenRequestOwnsSession(ownerRequest);
+    ownerRequest.active = false;
+    if (!ownerRequest.settled && !ownerRequest.entered) ownerRequest.releasedBeforeEntry = true;
+    if (shouldExit) {{
+      ownerRequest.entered = false;
+      NATIVE_MAP_DELETE(state.fullscreenRequests, pluginId);
+      return exitFullscreen(true);
+    }}
+    if (ownerRequest.settled) NATIVE_MAP_DELETE(state.fullscreenRequests, pluginId);
+    return NATIVE_PROMISE.resolve(false);
+  }}
+
+  function handleFullscreenChange() {{
+    if (!runtimeActive) return;
+    const current = fullscreenElement();
+    const active = Boolean(current);
+    if (typeof NATIVE_SESSION_NONCE !== "undefined" && NATIVE_SESSION_NONCE && active !== state.desktopFullscreenActive) {{
+      state.desktopFullscreenActive = active;
+      nativeCommand("window.fullscreen.set", {{ active }}).catch(() => {{
+        reportFullscreenError("Could not change the Amazon Music desktop window to fullscreen.");
+      }});
+    }}
+    const session = noteFullscreenSession(current);
+    NATIVE_MAP_FOR_EACH(state.fullscreenRequests, (ownerRequest) => {{
+      if (!current) {{
+        ownerRequest.entered = false;
+        ownerRequest.element = null;
+        ownerRequest.sessionId = 0;
+        if (!ownerRequest.active && ownerRequest.settled) NATIVE_MAP_DELETE(state.fullscreenRequests, ownerRequest.ownerId);
+      }} else if (ownerRequest.entered && (ownerRequest.element !== current || ownerRequest.sessionId !== session.id)) {{
+        ownerRequest.entered = false;
+        ownerRequest.element = null;
+        ownerRequest.sessionId = 0;
+      }}
+    }});
+    if (current) {{
+      NATIVE_MAP_FOR_EACH(state.fullscreenPendingRequests, (request) => {{
+        if ((request.active || request.releasedBeforeEntry) && request.target === current) {{
+          request.eventObserved = true;
+          confirmFullscreenRequest(request, true);
+        }}
+      }});
+    }}
+    notifyFullscreenSubscribers();
+  }}
+
+  function handleFullscreenShortcut(event) {{
+    if (!event || event.key !== "F11") return;
+    if (event.type === "keyup") {{
+      state.fullscreenShortcutDown = false;
+      return;
+    }}
+    if (!runtimeActive || !state.preferences.fullscreenShortcut) return;
+    if (event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) return;
+    if (event.repeat || state.fullscreenShortcutDown) {{
+      if (typeof event.preventDefault === "function") event.preventDefault();
+      return;
+    }}
+    state.fullscreenShortcutDown = true;
+    if (typeof event.preventDefault === "function") event.preventDefault();
+    if (fullscreenElement()) {{
+      exitFullscreen();
+    }} else {{
+      requestFullscreen();
+    }}
+  }}
+
+  function handleFullscreenWindowBlur() {{
+    state.fullscreenShortcutDown = false;
+  }}
 
   function mapValuesSnapshot(map) {{
     const values = [];
@@ -2165,6 +2480,8 @@ def build_runtime_script(
     const catalogStatus = state.catalogError
       ? state.catalogError
       : `${{catalogCount}} ${{catalogCount === 1 ? "entry" : "entries"}} loaded`;
+    const fullscreenDetail = state.fullscreenError
+      || (fullscreenAvailable() ? "Use F11 to toggle browser fullscreen" : "Fullscreen is unavailable in this browser");
     return `
       <div class="amazify-section-title">Preferences</div>
       <div class="amazify-setting-row">
@@ -2174,6 +2491,12 @@ def build_runtime_script(
       <div class="amazify-setting-row">
         <div><strong>Check for Amazify updates automatically</strong><span>Check when Settings opens</span></div>
         <button class="amazify-toggle" type="button" aria-label="Check for Amazify updates automatically" aria-pressed="${{state.preferences.autoCheckAppUpdates ? "true" : "false"}}" data-amazify-setting="autoCheckAppUpdates"></button>
+      </div>
+
+      <div class="amazify-section-title">App QoL</div>
+      <div class="amazify-setting-row">
+        <div><strong>F11 fullscreen shortcut</strong><span>${{esc(fullscreenDetail)}}</span></div>
+        <button class="amazify-toggle" type="button" aria-label="F11 fullscreen shortcut" aria-pressed="${{state.preferences.fullscreenShortcut ? "true" : "false"}}" data-amazify-setting="fullscreenShortcut"></button>
       </div>
 
       <div class="amazify-section-title">Application updates</div>
@@ -2814,6 +3137,9 @@ def build_runtime_script(
   }}
 
   function cleanupPluginRegistrations(pluginId) {{
+    const lifecycle = NATIVE_MAP_GET(state.pluginLifecycles, pluginId);
+    if (lifecycle) lifecycle.active = false;
+    NATIVE_MAP_DELETE(state.pluginLifecycles, pluginId);
     cleanupRenderedSettingsSections(pluginId);
     const sectionKeys = mapKeysSnapshot(state.settingsSections);
     for (let index = 0; index < sectionKeys.length; index += 1) {{
@@ -2827,6 +3153,11 @@ def build_runtime_script(
     const settingSubscribers = NATIVE_MAP_GET(state.pluginSettingSubscribers, pluginId) || [];
     for (let index = 0; index < settingSubscribers.length; index += 1) settingSubscribers[index].active = false;
     NATIVE_MAP_DELETE(state.pluginSettingSubscribers, pluginId);
+    const fullscreenSubscribers = NATIVE_MAP_GET(state.fullscreenSubscribers, pluginId) || [];
+    for (let index = 0; index < fullscreenSubscribers.length; index += 1) fullscreenSubscribers[index].active = false;
+    NATIVE_MAP_DELETE(state.fullscreenSubscribers, pluginId);
+    const fullscreenRequest = NATIVE_MAP_GET(state.fullscreenRequests, pluginId);
+    if (fullscreenRequest) releaseFullscreenForPlugin(pluginId);
     const capabilities = mapValuesSnapshot(state.capabilityProviders);
     for (let index = 0; index < capabilities.length; index += 1) {{
       if (capabilities[index].providerId === pluginId) revokeCapabilityRecord(capabilities[index]);
@@ -2836,6 +3167,8 @@ def build_runtime_script(
   function buildPluginApi(plugin) {{
     const manifest = plugin.manifest || {{}};
     const pluginId = NATIVE_STRING(manifest.id || "");
+    const lifecycle = {{ active: true }};
+    NATIVE_MAP_SET(state.pluginLifecycles, pluginId, lifecycle);
     const permissionList = declaredPermissions(manifest);
     const permissions = new NATIVE_SET();
     for (let index = 0; index < permissionList.length; index += 1) {{
@@ -2869,12 +3202,29 @@ def build_runtime_script(
       subscribe: (listener) => subscribePluginSettings(pluginId, listener),
       reset: () => resetPluginSettings(pluginId)
     }});
+    const fullscreen = {{
+      request: (element) => lifecycle.active ? requestFullscreen(element || document.documentElement, pluginId) : NATIVE_PROMISE.resolve(false),
+      exit: () => lifecycle.active ? exitFullscreen() : NATIVE_PROMISE.resolve(false),
+      release: () => lifecycle.active ? releaseFullscreenForPlugin(pluginId) : NATIVE_PROMISE.resolve(false),
+      getState: () => lifecycle.active ? fullscreenSnapshot() : NATIVE_FREEZE({{ available: false, active: false, element: null }}),
+      isActive: () => lifecycle.active && Boolean(fullscreenElement()),
+      subscribe: (listener) => lifecycle.active ? subscribeFullscreenForPlugin(pluginId, listener) : () => {{}}
+    }};
+    NATIVE_DEFINE_PROPERTY(fullscreen, "available", {{
+      enumerable: true,
+      get: () => lifecycle.active && fullscreenAvailable()
+    }});
+    NATIVE_DEFINE_PROPERTY(fullscreen, "active", {{
+      enumerable: true,
+      get: () => lifecycle.active && Boolean(fullscreenElement())
+    }});
     const api = {{
       version: VERSION,
       permissions: NATIVE_FREEZE(permissionList),
       ui,
       assets,
       settings,
+      fullscreen: NATIVE_FREEZE(fullscreen),
       capabilities: NATIVE_FREEZE({{
         provide: (name, definition) => provideCapabilityForPlugin(pluginId, name, definition),
         subscribe: (request, callback) => subscribeCapabilityForPlugin(pluginId, request, callback)
@@ -3061,6 +3411,10 @@ def build_runtime_script(
 
   function cleanupRuntime() {{
     if (!runtimeActive) return;
+    if (state.desktopFullscreenActive && NATIVE_SESSION_NONCE) {{
+      nativeCommand("window.fullscreen.set", {{ active: false }}).catch(() => {{}});
+      state.desktopFullscreenActive = false;
+    }}
     runtimeActive = false;
     NATIVE_REMOVE_EVENT_LISTENER(window, CLEANUP_EVENT, cleanupRuntime);
     if (state.observer) {{
@@ -3082,10 +3436,24 @@ def build_runtime_script(
     for (let index = 0; index < mountedPluginIds.length; index += 1) {{
       unmountPlugin(mountedPluginIds[index]);
     }}
+    const fullscreenPendingRequests = mapValuesSnapshot(state.fullscreenPendingRequests);
+    for (let index = 0; index < fullscreenPendingRequests.length; index += 1) {{
+      finishFullscreenRequest(fullscreenPendingRequests[index], false);
+    }}
+    NATIVE_MAP_CLEAR(state.fullscreenRequests);
+    NATIVE_MAP_CLEAR(state.fullscreenPendingRequests);
+    NATIVE_MAP_CLEAR(state.fullscreenSubscribers);
     removeRuntimeSurfaces();
     const runtimeStyle = document.getElementById(RUNTIME_STYLE_ID);
     if (runtimeStyle) runtimeStyle.remove();
     document.removeEventListener("click", closeMenuOnOutsideClick, true);
+    NATIVE_REMOVE_EVENT_LISTENER(document, "fullscreenchange", handleFullscreenChange);
+    NATIVE_REMOVE_EVENT_LISTENER(document, "webkitfullscreenchange", handleFullscreenChange);
+    NATIVE_REMOVE_EVENT_LISTENER(document, "MSFullscreenChange", handleFullscreenChange);
+    NATIVE_REMOVE_EVENT_LISTENER(document, "fullscreenerror", handleFullscreenChange);
+    NATIVE_REMOVE_EVENT_LISTENER(window, "keydown", handleFullscreenShortcut);
+    NATIVE_REMOVE_EVENT_LISTENER(window, "keyup", handleFullscreenShortcut);
+    NATIVE_REMOVE_EVENT_LISTENER(window, "blur", handleFullscreenWindowBlur);
     if (window.Amazify === publicRuntime) {{
       delete window.Amazify;
     }}
@@ -3108,6 +3476,13 @@ def build_runtime_script(
   state.observer = new MutationObserver(() => attachRoot());
   state.observer.observe(document.documentElement, {{ childList: true, subtree: true }});
   document.addEventListener("click", closeMenuOnOutsideClick, true);
+  NATIVE_ADD_EVENT_LISTENER(document, "fullscreenchange", handleFullscreenChange);
+  NATIVE_ADD_EVENT_LISTENER(document, "webkitfullscreenchange", handleFullscreenChange);
+  NATIVE_ADD_EVENT_LISTENER(document, "MSFullscreenChange", handleFullscreenChange);
+  NATIVE_ADD_EVENT_LISTENER(document, "fullscreenerror", handleFullscreenChange);
+  NATIVE_ADD_EVENT_LISTENER(window, "keydown", handleFullscreenShortcut);
+  NATIVE_ADD_EVENT_LISTENER(window, "keyup", handleFullscreenShortcut);
+  NATIVE_ADD_EVENT_LISTENER(window, "blur", handleFullscreenWindowBlur);
 
   return {{ ok: true, version: VERSION, plugins: INITIAL_PLUGINS.length }};
 }})()

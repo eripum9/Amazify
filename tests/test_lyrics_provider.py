@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from amazify.lyrics_cache import LyricsCache
-from amazify.lyrics_provider import LyricsProviderError, LyricsProviderService, validate_track, _metadata_matches
+from amazify.lyrics_provider import BETTER_LYRICS_URL, UNISON_URL, LyricsProviderError, LyricsProviderService, validate_track, _metadata_matches, _metadata_fingerprint
+from tests.test_rich_lyrics import APPLE_RICH
 
 
 RICH_TTML = """<?xml version="1.0"?>
@@ -74,6 +75,44 @@ def track(**overrides: Any) -> dict[str, Any]:
 
 
 class LyricsProviderTests(unittest.TestCase):
+    def test_apple_rich_response_succeeds_before_unison_fallback(self) -> None:
+        opener = FakeOpener([{"ttml": APPLE_RICH}])
+        with tempfile.TemporaryDirectory() as temp:
+            service = self.make_service(Path(temp), opener)
+            try:
+                result = service.load(track(), "apple")
+                self.assertEqual(result["status"], "ready")
+                self.assertEqual(result["source"], "better-lyrics")
+                self.assertEqual(len(result["payload"]["lines"]), 3)
+                self.assertEqual(len(opener.requests), 1)
+            finally:
+                service.close()
+
+    def test_old_parser_cache_entries_are_not_reused(self) -> None:
+        opener = FakeOpener([{"ttml": APPLE_RICH}])
+        with tempfile.TemporaryDirectory() as temp:
+            service = self.make_service(Path(temp), opener)
+            fingerprint = _metadata_fingerprint(validate_track(track()))
+            service.cache.store_no_lyrics("better-lyrics", fingerprint, f"native-rich-v1:{fingerprint}")
+            try:
+                result = service.load(track(), "recheck")
+                self.assertEqual(result["status"], "ready")
+                self.assertFalse(result["cached"])
+                self.assertEqual(len(opener.requests), 1)
+            finally:
+                service.close()
+
+    def test_parser_failure_detail_is_not_masked_as_missing_lyrics(self) -> None:
+        opener = FakeOpener([{"ttml": "<tt><head><script/></head><body/></tt>"}, {"success": False}])
+        with tempfile.TemporaryDirectory() as temp:
+            service = self.make_service(Path(temp), opener)
+            try:
+                result = service.load(track(), "failure")
+                self.assertEqual(result["status"], "unavailable")
+                self.assertIn("better-lyrics: TTML contains an active construct", result["detail"])
+            finally:
+                service.close()
+
     def make_service(self, root: Path, opener: Any, cache: LyricsCache | None = None) -> LyricsProviderService:
         return LyricsProviderService(
             root,
@@ -205,6 +244,25 @@ class LyricsProviderTests(unittest.TestCase):
             service.load(track(), "request-2")
             self.assertEqual(len(opener.requests), 4)
             service.close()
+
+    def test_public_cache_restriction_is_reported_separately_and_not_cached(self) -> None:
+        from urllib.error import HTTPError
+
+        unauthorized = HTTPError(BETTER_LYRICS_URL, 401, "auth", Message(), None)
+        missing = HTTPError(UNISON_URL, 404, "missing", Message(), None)
+        opener = FakeOpener([unauthorized, missing, unauthorized])
+        with tempfile.TemporaryDirectory() as temp:
+            service = self.make_service(Path(temp), opener)
+            try:
+                first = service.load(track(), "request-1")
+                self.assertEqual(first["status"], "no-lyrics")
+                self.assertIn("not in the public cache", first["detail"])
+                self.assertIn("unison: no compatible rich lyrics", first["detail"])
+                second = service.load(track(), "request-2")
+                self.assertEqual(second["status"], "no-lyrics")
+                self.assertEqual(len(opener.requests), 3)
+            finally:
+                service.close()
 
     def test_unicode_and_artist_punctuation_are_not_ambiguous_matches(self) -> None:
         metadata = track(artists=["Tyler, The Creator"])

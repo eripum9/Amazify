@@ -20,7 +20,7 @@ from .rich_lyrics import RichLyricsError, parse_ttml, validate_model
 
 BETTER_LYRICS_URL = "https://lyrics-api.boidu.dev/getLyrics"
 UNISON_URL = "https://unison.boidu.dev/lyrics"
-PROVIDER_VERSION = "native-rich-v1"
+PROVIDER_VERSION = "native-rich-v2"
 MAX_NETWORK_BYTES = 1 * 1024 * 1024
 MAX_REQUEST_SECONDS = 24.0
 REQUEST_TIMEOUT_SECONDS = 8.0
@@ -40,6 +40,10 @@ class LyricsUnavailable(LyricsProviderError):
 
 
 class _Canceled(LyricsUnavailable):
+    pass
+
+
+class _ProviderCacheMiss(LyricsUnavailable):
     pass
 
 
@@ -213,6 +217,10 @@ class LyricsProviderService:
                 if result["status"] == "ready":
                     return result
             outcomes: list[tuple[str, str]] = [(item["source"], item["status"]) for item in cached]
+            diagnostics: list[str] = [
+                f"{item['source']}: no compatible rich lyrics (cached)"
+                for item in cached if item["status"] == "no-lyrics"
+            ]
             for provider in ("better-lyrics", "unison"):
                 self._raise_if_canceled(canceled)
                 if any(item["source"] == provider for item in cached):
@@ -222,19 +230,28 @@ class LyricsProviderService:
                 except _ProviderMiss:
                     self._raise_if_canceled(canceled)
                     outcomes.append((provider, "no-lyrics"))
+                    diagnostics.append(f"{provider}: no compatible rich lyrics")
                     self.cache.store_no_lyrics(provider, fingerprint, f"{PROVIDER_VERSION}:{fingerprint}")
                     continue
-                except (_ProviderMalformed, LyricsUnavailable):
+                except _ProviderCacheMiss as exc:
+                    self._raise_if_canceled(canceled)
+                    outcomes.append((provider, "cache-miss"))
+                    diagnostics.append(f"{provider}: {exc}")
+                    continue
+                except (_ProviderMalformed, LyricsUnavailable) as exc:
                     self._raise_if_canceled(canceled)
                     outcomes.append((provider, "unavailable"))
+                    diagnostics.append(f"{provider}: {exc}")
                     continue
                 self._raise_if_canceled(canceled)
                 self.cache.store_lyrics(provider, fingerprint, payload, f"{PROVIDER_VERSION}:{fingerprint}")
                 return self._result("ready", track, provider, payload, False)
             self._raise_if_canceled(canceled)
-            status = "no-lyrics" if outcomes and all(status == "no-lyrics" for _, status in outcomes) else "unavailable"
+            status = "no-lyrics" if outcomes and all(status in {"no-lyrics", "cache-miss"} for _, status in outcomes) else "unavailable"
             source = next((source for source, item_status in outcomes if item_status == status), "better-lyrics")
-            detail = "No compatible rich lyrics" if status == "no-lyrics" else "Providers unavailable"
+            detail = "No compatible rich lyrics" if status == "no-lyrics" else "Rich lyrics lookup failed"
+            if diagnostics:
+                detail += " (" + "; ".join(diagnostics) + ")"
             cached_outcome = any(
                 item["source"] == source and item["status"] == status and item["cached"]
                 for item in cached
@@ -382,6 +399,8 @@ class LyricsProviderService:
                 if exc.code == 404:
                     raise _ProviderMiss("Provider has no lyrics") from exc
                 if exc.code == 401:
+                    if endpoint == BETTER_LYRICS_URL:
+                        raise _ProviderCacheMiss("not in the public cache; uncached queries require a provider API key") from exc
                     raise LyricsUnavailable("Provider requires authentication") from exc
                 if exc.code == 429 and attempt == 0:
                     retry_after = 0.5

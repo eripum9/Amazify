@@ -70,6 +70,8 @@ METRICS = """JSON.stringify((function(){
   var normal=native&&native.querySelector('.lyricsText');
   function style(n){if(!n)return null;var s=getComputedStyle(n);return {font:s.font,color:s.color,lineHeight:s.lineHeight,letterSpacing:s.letterSpacing,display:s.display};}
   return {hosts:document.querySelectorAll('.amazify-karaoke-host').length,
+    richLines:host&&host.querySelectorAll('.amazify-karaoke-line').length,
+    richTokens:host&&host.querySelectorAll('.amazify-karaoke-token').length,
     nativeVisible:!!(native&&native.getClientRects().length),
     lyricsRect:wrapper&&JSON.parse(JSON.stringify(wrapper.getBoundingClientRect())),
     centered:document.querySelector('#transportContainer').classList.contains('amazify-true-big-mode-no-lyrics'),
@@ -154,6 +156,8 @@ def exercise_settings(client: DevToolsClient, provider: FixtureProvider) -> dict
 
 def exercise_interactions(client: DevToolsClient, provider: FixtureProvider) -> dict[str, Any]:
     loads = provider.loads
+    client.evaluate('if(document.querySelector("#transportContainer").__vue__.playerModel.state==="PLAYING")document.querySelector("#transport .playPause").click()')
+    pump_for(client, 0.3)
     client.evaluate('document.querySelectorAll(".amazify-karaoke-line")[3].click()')
     pump_for(client, 2)
     position = client.evaluate('document.querySelector("#transportContainer").__vue__.playbackProgress.currentTime')
@@ -190,6 +194,61 @@ def exercise_interactions(client: DevToolsClient, provider: FixtureProvider) -> 
     return {"clickSeekMs": position, "manualScrollRecenters": True, "reopenRetainsRenderer": True, "trackSwitch": True}
 
 
+def exercise_motion(client: DevToolsClient) -> dict[str, Any]:
+    # Seek through the plugin's real playback adapter, keeping synthetic fixtures
+    # and real tracks inside a sung line for a deterministic animation check.
+    client.evaluate('document.querySelectorAll(".amazify-karaoke-line")[3].click()')
+    client.evaluate('if(document.querySelector("#transportContainer").__vue__.playerModel.state!=="PLAYING")document.querySelector("#transport .playPause").click()')
+    pump_for(client, 0.8)
+    metrics = json.loads(client.evaluate('''new Promise(function(resolve){
+      var host=document.querySelector('.amazify-karaoke-host');
+      var frames=[],fonts=[],motion=0,rawChanges=0,fillChanges=0,textMutations=0;
+      var lastRaw=null,lastFill=null,started=null,last=null,riseDuration='';
+      function font(n){var s=getComputedStyle(n);return [s.fontFamily,s.fontSize,s.fontWeight,s.fontStyle,s.lineHeight,s.letterSpacing].join('|');}
+      var observer=new MutationObserver(function(records){records.forEach(function(r){
+        if(r.type==='characterData'||r.type==='childList')textMutations++;
+      });});
+      observer.observe(host,{subtree:true,childList:true,characterData:true});
+      function frame(now){
+        if(last===null){started=now;last=now;requestAnimationFrame(frame);return;}
+        frames.push(now-last);last=now;
+        var raw=document.querySelector('#transportContainer').__vue__.playbackProgress.currentTime;
+        if(raw!==lastRaw){rawChanges++;lastRaw=raw;}
+        var token=host.querySelector('.current .is-singing');
+        if(token){
+          riseDuration=getComputedStyle(token).transitionDuration;
+          var text=token.closest('.lyricsText'),f=font(token),expected=font(text);
+          var native=document.querySelector('[data-amazify-karaoke-native] .current .lyricsText');
+          fonts.push({token:f,text:expected,native:native&&font(native)});
+          if(getComputedStyle(token).transform!=='none'&&getComputedStyle(token).transform!=='matrix(1, 0, 0, 1, 0, 0)')motion++;
+          var fill=token.style.getPropertyValue('--lyric-progress');
+          if(fill!==lastFill){fillChanges++;lastFill=fill;}
+        }
+        if(now-started<3000){requestAnimationFrame(frame);return;}
+        observer.disconnect();frames.sort(function(a,b){return a-b;});
+        resolve(JSON.stringify({hosts:document.querySelectorAll('.amazify-karaoke-host').length,
+          frames:frames.length,p95Ms:frames[Math.floor(frames.length*.95)],maxMs:frames[frames.length-1],
+          rawChanges:rawChanges,fillChanges:fillChanges,textMutations:textMutations,movingFrames:motion,
+          fontSamples:fonts.length,fontMatches:fonts.every(function(f){return f.token===f.text&&(!f.native||f.native===f.text);}),
+          firstFont:fonts[0],
+          upcomingColor:(function(){var n=host.querySelector('.is-upcoming .lyricsText');return n&&getComputedStyle(n).color;})(),
+          unsungColor:getComputedStyle(host.querySelector('ul')).getPropertyValue('--karaoke-unsung-color').trim(),
+          returnDuration:getComputedStyle(host.querySelector('.amazify-karaoke-token:not(.is-singing)')).transitionDuration,
+          riseDuration:riseDuration}));
+      }
+      requestAnimationFrame(frame);
+    })'''))
+    assert metrics["hosts"] == 1 and metrics["fontSamples"] > 0, metrics
+    assert metrics["fontMatches"] and metrics["textMutations"] == 0, metrics
+    assert metrics["movingFrames"] > 0, metrics
+    assert metrics["fillChanges"] > metrics["rawChanges"], metrics
+    if client.evaluate('document.querySelector(".amazify-karaoke-host").dataset.presentation') == "true-big-mode":
+        assert metrics["upcomingColor"] == "rgba(255, 255, 255, 0.32)", metrics
+        assert metrics["unsungColor"] == "rgba(255, 255, 255, 0.32)", metrics
+    assert metrics["returnDuration"].startswith("0.45s") and metrics["riseDuration"].startswith("0.32s"), metrics
+    return metrics
+
+
 def exercise_lifecycle(client: DevToolsClient, provider: FixtureProvider, presentation: str, native_missing: bool = False) -> dict[str, Any]:
     assert json.loads(client.evaluate(METRICS))["hosts"] == 1
     toggle_plugin(client, "amazify.karaoke-lyrics")
@@ -220,12 +279,14 @@ def main() -> None:
     parser.add_argument("--presentation", choices=("native", "signal", "big", "both"), default="native")
     parser.add_argument("--lyrics", choices=("off", "rich", "missing", "error", "live"), default="rich")
     parser.add_argument("--seconds", type=float, default=5)
+    parser.add_argument("--expect-rich", action="store_true", help="Fail if a real provider does not produce a visible rich renderer")
     parser.add_argument("--width", type=int)
     parser.add_argument("--height", type=int)
     parser.add_argument("--lifecycle", action="store_true", help="Exercise real marketplace enable/disable controls in the temporary profile")
     parser.add_argument("--native-missing", action="store_true", help="Temporarily simulate absent Amazon lyrics; restore transport metadata on exit")
     parser.add_argument("--settings-test", action="store_true", help="Exercise True Big Mode Show lyrics and provider suspension; restore personal settings")
     parser.add_argument("--interactions", action="store_true", help="Seek, manually scroll, reopen and advance one real track (ends paused)")
+    parser.add_argument("--motion-test", action="store_true", help="Seek and play to compare animated token fonts with native lyrics and measure frame updates")
     args = parser.parse_args()
     output = ROOT / "build" / "karaoke-qa"
     output.mkdir(parents=True, exist_ok=True)
@@ -258,6 +319,12 @@ def main() -> None:
                 })()''')
                 pump_for(client, 0.5)
             script = build_runtime_script(bridge_url="", bridge_token="", plugins=manager.runtime_snapshot(), native_session_nonce=bridge.session_nonce, native_response_callback=bridge.response_callback_name)
+            if args.motion_test:
+                client.evaluate('''(function(){
+                  var settings=JSON.parse(localStorage.getItem('amazify.plugin.settings.v1')||'{}');
+                  settings['amazify.karaoke-lyrics']={motion:'on'};
+                  localStorage.setItem('amazify.plugin.settings.v1',JSON.stringify(settings));
+                })()''')
             client.evaluate(script)
             client.evaluate('document.querySelector("#transportContainer").__vue__.showNowPlaying()')
             samples = []
@@ -273,8 +340,9 @@ def main() -> None:
             metrics = json.loads(client.evaluate(METRICS))
             metrics["providerMode"] = args.lyrics
             metrics["loads"] = getattr(provider, "loads", None)
-            if args.lyrics == "rich":
+            if args.lyrics == "rich" or (args.lyrics == "live" and args.expect_rich):
                 assert metrics["hosts"] == 1 and not metrics["nativeVisible"], metrics
+                assert metrics["richLines"] > 0 and metrics["richTokens"] > 0, metrics
                 assert metrics["lyricsRect"]["height"] > 100 and metrics["lyricsRect"]["top"] < (args.height or 1080), metrics
                 for property_name in ("font", "lineHeight", "letterSpacing"):
                     if metrics["nativeText"]:
@@ -300,6 +368,8 @@ def main() -> None:
             if args.interactions:
                 assert isinstance(provider, FixtureProvider) and args.lyrics == "rich" and not args.native_missing
                 metrics["interactions"] = exercise_interactions(client, provider)
+            if args.motion_test:
+                metrics["motion"] = exercise_motion(client)
             name = f"{args.presentation}-{args.lyrics}-{'no-amazon-' if args.native_missing else ''}{args.width or 'window'}"
             screenshot = client.call("Page.captureScreenshot", {"format": "png"})
             (output / f"{name}.png").write_bytes(base64.b64decode(screenshot["data"]))

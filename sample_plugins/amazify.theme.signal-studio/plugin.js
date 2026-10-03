@@ -213,8 +213,8 @@ function updateSearch() {
     if (!originalPlaceholders.has(input)) {
       originalPlaceholders.set(input, input.getAttribute("placeholder"));
     }
-    input.setAttribute("placeholder", "Search music, artists, podcasts");
-    input.setAttribute("aria-label", "Search music, artists, and podcasts");
+    if (input.getAttribute("placeholder") !== "Search music, artists, podcasts") input.setAttribute("placeholder", "Search music, artists, podcasts");
+    if (input.getAttribute("aria-label") !== "Search music, artists, and podcasts") input.setAttribute("aria-label", "Search music, artists, and podcasts");
   });
 }
 
@@ -295,13 +295,15 @@ function updateNowPlaying() {
   );
   const name = String(title && title.textContent ? title.textContent : "").trim();
   document.querySelectorAll("[data-signal-now-playing]").forEach((node) => {
-    node.textContent = name || "Ready to play";
+    const label = name || "Ready to play";
+    if (node.textContent !== label) node.textContent = label;
   });
 
   const artwork = currentArtwork();
   if (artwork) {
-    document.body.style.setProperty("--signal-studio-artwork", `url("${artwork.replace(/"/g, "\\\"")}")`);
-    document.body.classList.add("signal-studio-has-artwork");
+    const value = `url("${artwork.replace(/"/g, "\\\"")}")`;
+    if (document.body.style.getPropertyValue("--signal-studio-artwork") !== value) document.body.style.setProperty("--signal-studio-artwork", value);
+    if (!document.body.classList.contains("signal-studio-has-artwork")) document.body.classList.add("signal-studio-has-artwork");
   } else {
     document.body.style.removeProperty("--signal-studio-artwork");
     document.body.classList.remove("signal-studio-has-artwork");
@@ -313,7 +315,7 @@ function bindTransportObserver() {
   if (!transport || transport === observedTransport) return;
   if (transportObserver) transportObserver.disconnect();
   observedTransport = transport;
-  transportObserver = new MutationObserver(scheduleSync);
+  transportObserver = new MutationObserver(observeChanges);
   transportObserver.observe(transport, {
     childList: true,
     subtree: true,
@@ -340,6 +342,16 @@ function scheduleSync() {
   frame = requestAnimationFrame(sync);
 }
 
+function observeChanges(mutations) {
+  // Word highlighting and lyric scrolling are owned by the lyrics renderer;
+  // neither changes header placement or the theme's now-playing metadata.
+  if (mutations.length && mutations.every((mutation) => {
+    const node = mutation.target.nodeType === 1 ? mutation.target : mutation.target.parentElement;
+    return node && node.closest(".lyricsWrapper, .amazify-karaoke-host");
+  })) return;
+  scheduleSync();
+}
+
 function focusSearch(event) {
   if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "k") return;
   const input = document.querySelector(
@@ -351,7 +363,7 @@ function focusSearch(event) {
   input.select();
 }
 
-const documentObserver = new MutationObserver(scheduleSync);
+const documentObserver = new MutationObserver(observeChanges);
 documentObserver.observe(document.body, { childList: true, subtree: true });
 window.addEventListener("hashchange", scheduleSync);
 window.addEventListener("resize", scheduleSync);

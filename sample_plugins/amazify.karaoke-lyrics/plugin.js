@@ -204,6 +204,7 @@ Karaoke.Renderer = function (onSeek) {
   this.lines = [];
   this.activeLines = new Set();
   this.activeLine = -1;
+  this.futureBoundary = -2;
   this.lastTime = null;
   this.manualUntil = 0;
   this.programmaticUntil = 0;
@@ -239,13 +240,14 @@ Karaoke.Renderer.prototype.setModel = function (model) {
   this.lastTime = null;
   this.manualUntil = 0;
   this.activeLine = -1;
+  this.futureBoundary = -2;
   this.activeLines.clear();
   this.lines = [];
   this.scroller.textContent = "";
   if (!model) { this.release(); return; }
   const renderer = this;
   model.lines.forEach(function (line) {
-    const row = Karaoke.presentationElement(null, "li", "lyricsLine amazify-karaoke-line");
+    const row = Karaoke.presentationElement(null, "li", "lyricsLine amazify-karaoke-line is-upcoming");
     const text = Karaoke.presentationElement(null, "span", "lyricsText");
     row.appendChild(text);
     row.tabIndex = 0;
@@ -286,6 +288,13 @@ Karaoke.Renderer.prototype.update = function (timeMs, forceScroll) {
   this.lastTime = timeMs;
   if (seek) this.manualUntil = 0;
   const last = Karaoke.findActiveLine(this.model.lines, timeMs);
+  // Update timing classes at line boundaries, including backward seeks, not every frame.
+  if (last !== this.futureBoundary) {
+    this.lines.forEach(function (line, index) {
+      line.row.classList.toggle("is-upcoming", index > last);
+    });
+    this.futureBoundary = last;
+  }
   const active = new Set();
   // Overlapping lead/background lines can both be active. DOM writes remain changed-only.
   for (let index = 0; index <= last; index += 1) {
@@ -621,6 +630,15 @@ Karaoke.Session.prototype.setDefaultHost = function (container, view) {
   this.syncHost();
   this.ensureLoad();
 };
+Karaoke.Session.prototype.retry = function () {
+  if (this.destroyed || !this.track || this.requestKey) return;
+  this.generation += 1;
+  this.loaded = false;
+  this.providerStatus = null;
+  this.status = this.model ? "ready" : "native";
+  this.publish();
+  this.ensureLoad();
+};
 Karaoke.Session.prototype.claimHost = function (container, options) {
   if (this.destroyed || !container || container.nodeType !== 1) throw new TypeError("Lyrics host must be a live DOM element");
   const claim = { container: container, presentation: String(options && options.presentation || "normal"), priority: Number(options && options.priority || 0), enabled: !(options && options.enabled === false), order: ++this.claimOrder };
@@ -766,12 +784,18 @@ Karaoke.addSettings = function (Amazify, session) {
     render: function (host) {
       const status = document.createElement("p");
       const clear = document.createElement("button");
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.textContent = "Retry lyrics lookup";
+      retry.addEventListener("click", function () { session.retry(); });
       clear.type = "button";
       clear.textContent = "Clear lyrics cache";
       host.appendChild(status);
+      host.appendChild(retry);
       host.appendChild(clear);
       let alive = true;
       const unsubscribe = session.subscribe(function (snapshot) {
+        retry.disabled = !snapshot.track || snapshot.status === "loading" || snapshot.status === "ready";
         if (snapshot.status === "ready") {
           status.textContent = "Rich lyrics: " + snapshot.source;
           return;
@@ -790,7 +814,7 @@ Karaoke.addSettings = function (Amazify, session) {
       clear.addEventListener("click", function () {
         clear.disabled = true;
         Amazify.lyricsProvider.clearCache().then(function () {
-          if (alive) status.textContent = "Lyrics cache cleared";
+          if (alive) { status.textContent = "Lyrics cache cleared"; session.retry(); }
         }).catch(function () { if (alive) status.textContent = "Could not clear lyrics cache"; }).then(function () { if (alive) clear.disabled = false; });
       });
       return function () { alive = false; unsubscribe(); };

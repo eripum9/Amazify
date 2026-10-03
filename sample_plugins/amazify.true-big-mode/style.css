@@ -554,6 +554,15 @@ body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayin
   z-index: 2 !important;
 }
 
+body.amazify-true-big-mode-active .amazify-karaoke-host[data-presentation="true-big-mode"] .amazify-karaoke-scroller {
+  --karaoke-unsung-color: rgba(255, 255, 255, 0.32) !important;
+}
+
+body.amazify-true-big-mode-active .amazify-karaoke-host[data-presentation="true-big-mode"] .is-upcoming .lyricsText,
+body.amazify-true-big-mode-active .nowPlayingView.x4 ul.lyricsScroller:not(.amazify-karaoke-scroller) .lyricsLine:not(.current) .lyricsText {
+  color: rgba(255, 255, 255, 0.32) !important;
+}
+
 @media (max-width: 980px) {
   body.amazify-true-big-mode-active #transportContainer.childViewShowing.nowPlayingShowing .nowPlayingView.x4 {
     grid-template-columns: 1fr !important;

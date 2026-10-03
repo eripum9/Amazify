@@ -32,7 +32,7 @@
 .amazify-karaoke-host .amazify-karaoke-line .lyricsText {
   display: inline-block;
   transform: translateY(0);
-  transition: transform 180ms ease, text-shadow 180ms ease;
+  transition: transform 420ms cubic-bezier(0.22, 0.61, 0.36, 1), text-shadow 420ms ease;
 }
 .amazify-karaoke-host .amazify-karaoke-line:hover .lyricsText,
 .amazify-karaoke-host .amazify-karaoke-line:focus .lyricsText {
@@ -58,11 +58,12 @@
   white-space: pre;
   transform: translateY(0);
   transform-origin: center bottom;
-  transition: transform 160ms cubic-bezier(0.2, 0.7, 0.3, 1), text-shadow 160ms ease;
+  transition: transform 450ms cubic-bezier(0.22, 0.61, 0.36, 1), text-shadow 450ms ease;
 }
 .amazify-karaoke-line.current .amazify-karaoke-token.is-singing {
   transform: translateY(-3px);
   text-shadow: 0 0 8px currentColor;
+  transition-duration: 320ms;
 }
 .amazify-karaoke-line.current .amazify-karaoke-token {
   --lyric-progress: 0%;
@@ -84,6 +85,12 @@
     transition: none;
     transform: none;
     text-shadow: none;
+  }
+  .amazify-karaoke-host[data-motion="on"] .amazify-karaoke-line .amazify-karaoke-token {
+    transition-duration: 450ms !important;
+  }
+  .amazify-karaoke-host[data-motion="on"] .amazify-karaoke-line.current .amazify-karaoke-token.is-singing {
+    transition-duration: 320ms !important;
   }
 }
 .amazify-karaoke-host[data-motion="off"] .amazify-karaoke-line .lyricsText,

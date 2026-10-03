@@ -14,8 +14,53 @@ RICH = """<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/
 <span begin="00:00:02.000" end="0:02.900">Welt</span>
 </p></div></body></tt>"""
 
+# Synthetic words, with the metadata and absolute section timing used by the
+# real Better Lyrics response for Beat It. Do not embed copyrighted lyrics.
+APPLE_RICH = '''<tt xmlns="http://www.w3.org/ns/ttml"
+    xmlns:itunes="http://music.apple.com/lyric-ttml-internal"
+    xmlns:ttm="http://www.w3.org/ns/ttml#metadata" itunes:timing="Word">
+    <head><metadata><itunes:iTunesMetadata leadingSilence="10">
+    <itunes:audio lyricOffset="-0.093" role="spatial"/>
+    </itunes:iTunesMetadata></metadata></head>
+    <body dur="20s"><div begin="10s" end="14s" itunes:songPart="Verse">
+    <p begin="10s" end="12s"><span begin="10s" end="11s">First</span> <span begin="11s" end="12s">word</span>
+    <span ttm:role="x-bg"><span begin="11s" end="12s">echo</span></span></p>
+    <p begin="12s" end="14s"><span begin="12s" end="13s">Second</span> <span begin="13s" end="14s">word</span></p>
+    </div></body></tt>'''
+
 
 class RichLyricsTests(unittest.TestCase):
+    def test_apple_metadata_and_section_times_are_media_absolute(self) -> None:
+        model = parse_ttml(APPLE_RICH, source="better-lyrics", track_key="amazon:key")
+        self.assertTrue(validate_model(model))
+        self.assertEqual(len(model["lines"]), 3)
+        self.assertEqual(model["lines"][0]["startMs"], 10000)
+        self.assertEqual(model["lines"][0]["words"][0]["startMs"], 10000)
+        self.assertEqual(model["lines"][1]["words"][0]["startMs"], 11000)
+        self.assertTrue(model["lines"][1]["background"])
+        self.assertEqual(model["lines"][2]["endMs"], 14000)
+
+    def test_audio_exception_does_not_allow_resources_or_active_markup(self) -> None:
+        for value in (
+            APPLE_RICH.replace('lyricOffset="-0.093"', 'src="https://example.com/audio"'),
+            APPLE_RICH.replace('<itunes:audio lyricOffset="-0.093" role="spatial"/>', '<audio/>'),
+            APPLE_RICH.replace('<itunes:audio lyricOffset="-0.093" role="spatial"/>', '<itunes:audio><script/></itunes:audio>'),
+            APPLE_RICH.replace('<body dur="20s">', '<body dur="20s"><itunes:audio/>'),
+        ):
+            with self.assertRaises(RichLyricsError):
+                parse_ttml(value, source="better-lyrics", track_key="amazon:key")
+
+    def test_section_bounds_are_validated_and_unknown_relative_timing_rejected(self) -> None:
+        for value in (
+            APPLE_RICH.replace('itunes:timing="Word"', ''),
+            APPLE_RICH.replace('div begin="10s"', 'div begin="11s"'),
+            APPLE_RICH.replace('div begin="10s" end="14s"', 'div begin="10s" end="13s"'),
+            APPLE_RICH.replace('dur="20s"', 'dur="9s"'),
+            APPLE_RICH.replace('div begin="10s"', 'div begin="bad"'),
+        ):
+            with self.assertRaises(RichLyricsError):
+                parse_ttml(value, source="better-lyrics", track_key="amazon:key")
+
     def test_parses_rich_timing_and_preserves_xml_spaces(self) -> None:
         model = parse_ttml(RICH, source="better-lyrics", track_key="amazon:key")
         self.assertTrue(validate_model(model))

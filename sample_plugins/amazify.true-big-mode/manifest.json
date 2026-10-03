@@ -1,7 +1,7 @@
 {
   "id": "amazify.true-big-mode",
   "name": "True Big Mode",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "author": "Amazify",
   "type": "ui",
   "description": "Turns Amazon Music Big Mode into a cleaner full-screen lyrics view with album-art exit behavior.",
@@ -16,6 +16,13 @@
       "label": "Show lyrics",
       "description": "Show lyrics beside the artwork. When off, center the artwork and suspend Karaoke Lyrics while True Big Mode is open.",
       "default": true
+    },
+    {
+      "id": "autoFullscreen",
+      "type": "boolean",
+      "label": "Enter fullscreen automatically",
+      "description": "Enter fullscreen when True Big Mode opens. Turn off to return to the window; browsers may require a user gesture.",
+      "default": false
     }
   ],
   "amazonMusic": {

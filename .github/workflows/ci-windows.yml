@@ -45,6 +45,7 @@ jobs:
           python scripts/build_karaoke_lyrics.py --check
           node --check sample_plugins/amazify.karaoke-lyrics/plugin.js
           node --check sample_plugins/amazify.true-big-mode/plugin.js
+          node --check sample_plugins/amazify.theme.signal-studio/plugin.js
           node --test tests/js/*.test.js
 
       - name: Run tests with coverage
@@ -54,7 +55,7 @@ jobs:
         run: python -m ruff check amazify packaging tests --select E9,F63,F7,F82
 
       - name: Pyright stable core checks
-        run: python -m pyright amazify/app_updater.py amazify/bridge.py amazify/config.py amazify/devtools.py amazify/native_bridge.py amazify/lyrics_provider.py amazify/rich_lyrics.py amazify/shortcuts.py amazify/window_identity.py packaging/amazify_installer.py .github/scripts/validate_candidate.py tests/test_app_updater.py tests/test_workflow_security.py tests/test_lyrics_provider.py tests/test_rich_lyrics.py
+        run: python -m pyright amazify/app_updater.py amazify/bridge.py amazify/config.py amazify/devtools.py amazify/native_bridge.py amazify/fullscreen.py amazify/lyrics_provider.py amazify/rich_lyrics.py amazify/shortcuts.py amazify/window_identity.py packaging/amazify_installer.py .github/scripts/validate_candidate.py tests/test_app_updater.py tests/test_workflow_security.py tests/test_lyrics_provider.py tests/test_rich_lyrics.py
 
       - name: Whitespace
         run: git diff --check

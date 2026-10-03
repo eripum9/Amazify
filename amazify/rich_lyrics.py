@@ -26,6 +26,7 @@ _XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
 _WHITESPACE = re.compile(r"\s")
 _SAFE_METADATA_ATTRS = {"timing", "dur", "key", "agent", "songpart", "role", "type", "id", "lang", "lyricoffset"}
 _COMPOSER_NS = "{https://composer.betterlyrics.org/ttml}"
+_ITUNES_NS = "{http://music.apple.com/lyric-ttml-internal}"
 
 
 class RichLyricsError(ValueError):
@@ -106,8 +107,15 @@ def _validate_tree(root: ET.Element) -> tuple[int, int]:
         if node_count > MAX_NODES or depth > MAX_DEPTH:
             raise RichLyricsError("TTML document is too large")
         name = _local_name(element.tag)
-        if name in active:
+        # Apple's audio entry describes a mix offset inside metadata, not a
+        # playable resource. It is never rendered or used to load anything.
+        inert_audio_metadata = in_head and element.tag == _ITUNES_NS + "audio"
+        if name in active and not inert_audio_metadata:
             raise RichLyricsError("TTML contains an active construct")
+        if inert_audio_metadata and (
+            len(element) or any(key not in {"lyricOffset", "role"} for key in element.attrib)
+        ):
+            raise RichLyricsError("TTML audio metadata contains unsupported content")
         if not in_head and name not in allowed_body and name != "head":
             raise RichLyricsError("TTML contains an unsupported element")
         if not in_head:
@@ -234,6 +242,33 @@ def _words(syllables: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return words
 
 
+def _validate_container_timing(root: ET.Element, body: ET.Element) -> None:
+    # These lyric profiles use media-absolute times at every level, including
+    # verse/chorus divs. Applying a div offset again would desynchronize lyrics.
+    absolute_profile = any(
+        root.attrib.get(namespace + "timing", "").casefold() in {"word", "syllable"}
+        for namespace in (_ITUNES_NS, _COMPOSER_NS)
+    )
+
+    def visit(element: ET.Element, lower: int, upper: int) -> None:
+        name = _local_name(element.tag)
+        if name not in {"body", "div", "p"}:
+            return
+        start = _parse_time(element.attrib["begin"]) if "begin" in element.attrib else lower
+        end = _parse_time(element.attrib["end"]) if "end" in element.attrib else upper
+        if name != "p" and "begin" in element.attrib and start != 0 and not absolute_profile:
+            raise RichLyricsError("Relative container timing is unsupported")
+        if "dur" in element.attrib:
+            duration_end = start + _parse_time(element.attrib["dur"])
+            end = min(end, duration_end)
+        if not lower <= start < end <= upper:
+            raise RichLyricsError("TTML container timing is inconsistent")
+        for child in element:
+            visit(child, start, end)
+
+    visit(body, 0, MAX_TIME_MS)
+
+
 def parse_ttml(
     value: str,
     *,
@@ -260,9 +295,8 @@ def parse_ttml(
     body = next((child for child in root if _local_name(child.tag) == "body"), None)
     if body is None:
         raise RichLyricsError("TTML has no body")
+    _validate_container_timing(root, body)
     for element in body.iter():
-        if _local_name(element.tag) in {"body", "div"} and "begin" in element.attrib and _parse_time(element.attrib["begin"]) != 0:
-            raise RichLyricsError("Relative container timing is unsupported")
         if _local_name(element.tag) != "p":
             continue
         if len(lines) >= MAX_LINES:

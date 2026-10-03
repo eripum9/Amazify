@@ -211,6 +211,15 @@ Karaoke.Session.prototype.setDefaultHost = function (container, view) {
   this.syncHost();
   this.ensureLoad();
 };
+Karaoke.Session.prototype.retry = function () {
+  if (this.destroyed || !this.track || this.requestKey) return;
+  this.generation += 1;
+  this.loaded = false;
+  this.providerStatus = null;
+  this.status = this.model ? "ready" : "native";
+  this.publish();
+  this.ensureLoad();
+};
 Karaoke.Session.prototype.claimHost = function (container, options) {
   if (this.destroyed || !container || container.nodeType !== 1) throw new TypeError("Lyrics host must be a live DOM element");
   const claim = { container: container, presentation: String(options && options.presentation || "normal"), priority: Number(options && options.priority || 0), enabled: !(options && options.enabled === false), order: ++this.claimOrder };

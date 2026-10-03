@@ -230,6 +230,7 @@ class NativeBindingBridgeTests(unittest.TestCase):
             ALLOWED_COMMANDS,
             {
                 "state.get",
+                "window.fullscreen.set",
                 "plugins.enable",
                 "plugins.disable",
                 "catalog.refresh",
