@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import unittest
 from pathlib import Path
@@ -10,7 +11,8 @@ from amazify import __version__
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "1.1.3"
+EXPECTED_VERSION = "1.1.4"
+EXPECTED_SIGNAL_STUDIO_VERSION = "0.2.2"
 
 
 def matched_version(path: Path, pattern: str) -> str:
@@ -43,6 +45,12 @@ class VersionMetadataTests(unittest.TestCase):
         }
 
         self.assertEqual(set(versions.values()), {EXPECTED_VERSION}, versions)
+
+        with (
+            ROOT / "sample_plugins" / "amazify.theme.signal-studio" / "manifest.json"
+        ).open(encoding="utf-8") as handle:
+            signal_studio_version = json.load(handle)["version"]
+        self.assertEqual(signal_studio_version, EXPECTED_SIGNAL_STUDIO_VERSION)
 
 
 if __name__ == "__main__":

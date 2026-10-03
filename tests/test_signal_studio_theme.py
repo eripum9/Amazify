@@ -35,6 +35,19 @@ def test_nested_carousel_buttons_do_not_capture_outer_control_clicks():
     assert "pointer-events: none !important;" in THEME_CSS[rule_start:rule_end]
 
 
+def test_carousel_viewport_preserves_native_scroll_overflow():
+    selector = (
+        "body.amazify-signal-studio:not(.amazify-true-big-mode-active) "
+        "#main-content .pageContainer {"
+    )
+    rule_start = THEME_CSS.index(selector)
+    rule_end = THEME_CSS.index("\n}", rule_start)
+    rule = THEME_CSS[rule_start:rule_end]
+    assert "padding: 0 4px 6px !important;" in rule
+    # Both visible and clip prevent the native scrollLeft assignment from paging.
+    assert "overflow" not in rule
+
+
 def test_fixed_listing_header_is_offset_past_navigation_rail():
     selector = (
         "#main-content .miniHeaderContainer {\n"

@@ -15,7 +15,9 @@ lock with `--require-hashes` and binary distributions only.
 ## Regenerating Locks
 
 Use CPython 3.12.10 on Windows and the `pip-tools` version pinned in
-`requirements-build.in`. Regenerate all three locks in one change:
+`requirements-build.in`. Regenerate all three locks in one change. Add
+`--upgrade` to the commands below when refreshing dependencies so transitive
+packages are updated instead of retaining the existing locked versions:
 
 ```powershell
 $python = "C:\path\to\python-3.12.10.exe"

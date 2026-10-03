@@ -96,7 +96,7 @@ Stock plugins are reviewed catalog entries maintained in this repository. Their 
 | Plugin | Version | Type | Description |
 |---|---:|---|---|
 | [True Big Mode](sample_plugins/amazify.true-big-mode/) | `0.2.3` | UI | Replaces Big Mode with a full-window layout, dynamic album-art ambience, custom playback controls, a draggable timeline, optional automatic fullscreen, and a centered no-lyrics state |
-| [Signal Studio](sample_plugins/amazify.theme.signal-studio/) | `0.2.1` | Theme | Reworks the full interface with a compact navigation rail, custom typography and textures, reactive ambience, user-selectable colors, redesigned panels, and a floating transport |
+| [Signal Studio](sample_plugins/amazify.theme.signal-studio/) | `0.2.2` | Theme | Reworks the full interface with a compact navigation rail, custom typography and textures, reactive ambience, user-selectable colors, redesigned panels, and a floating transport |
 | [Karaoke Lyrics](sample_plugins/amazify.karaoke-lyrics/) | `0.2.5` | UI | Optional word/syllable highlighting from Better Lyrics and Unison, using the current presentation's typography and colors; otherwise leaves native lyrics untouched. Requires Amazify `1.1.2`. |
 
 True Big Mode is inspired by [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics).

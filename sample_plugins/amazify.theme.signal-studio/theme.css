@@ -792,9 +792,9 @@ body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .see
   font-weight: 700 !important;
 }
 
+/* Native carousel handlers set scrollLeft; preserve their overflow-x: auto. */
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .pageContainer {
   padding: 0 4px 6px !important;
-  overflow: visible !important;
 }
 
 body.amazify-signal-studio:not(.amazify-true-big-mode-active) #main-content .slideItem {
