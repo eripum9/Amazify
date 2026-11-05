@@ -11,7 +11,7 @@ from amazify import __version__
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "1.1.4"
+EXPECTED_VERSION = "1.1.5"
 EXPECTED_SIGNAL_STUDIO_VERSION = "0.2.2"
 
 

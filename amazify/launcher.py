@@ -7,6 +7,7 @@ import math
 import ntpath
 import os
 import re
+import socket
 import subprocess
 import threading
 import time
@@ -32,10 +33,17 @@ AMAZON_PACKAGE_DIRECTORY_RE = re.compile(
 )
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1"})
 EXPECTED_LISTENER_TTL_SECONDS = 60.0
+DEVTOOLS_PROBE_TIMEOUT_SECONDS = 0.5
+DEVTOOLS_PROBE_DISCOVERY_SECONDS = 1.0
+DEVTOOLS_PROBE_POLL_SECONDS = 0.05
 _EXPECTED_LISTENERS_LOCK = threading.RLock()
 
 
 class LaunchError(RuntimeError):
+    pass
+
+
+class DevToolsListenerNotReady(LaunchError):
     pass
 
 
@@ -479,10 +487,26 @@ def validate_devtools_listener(port: int) -> None:
             "Windows could not verify the Amazon Music DevTools listener owner"
         ) from exc
 
+    needs_probe = False
+    try:
+        listener_pids = _devtools_listener_pids(connections, selected_port)
+    except DevToolsListenerNotReady:
+        needs_probe = True
+        listener_pids = _devtools_listener_pids(
+            connections, selected_port, allow_unknown=True
+        )
+    if listener_pids:
+        _validate_devtools_listener_pids(psutil, selected_port, listener_pids)
+    if needs_probe or not listener_pids:
+        _validate_devtools_probe(psutil, selected_port)
+
+
+def _devtools_listener_pids(
+    connections: Any, selected_port: int, *, allow_unknown: bool = False
+) -> set[int]:
     listener_pids: set[int] = set()
+    unknown_owner = False
     for connection in connections:
-        if str(getattr(connection, "status", "")).upper() != "LISTEN":
-            continue
         host, connection_port = _connection_address(getattr(connection, "laddr", None))
         if connection_port != selected_port:
             continue
@@ -490,18 +514,98 @@ def validate_devtools_listener(port: int) -> None:
             raise LaunchError(
                 f"DevTools port {selected_port} is listening on a non-loopback interface"
             )
+        if str(getattr(connection, "status", "")).upper() != "LISTEN":
+            continue
         process_id = _positive_process_id(getattr(connection, "pid", None))
         if process_id is None:
-            raise LaunchError(
-                f"Windows could not identify the owner of DevTools port {selected_port}"
-            )
+            unknown_owner = True
+            continue
         listener_pids.add(process_id)
-
-    if not listener_pids:
-        raise LaunchError(
-            f"Windows could not find the listener owner for DevTools port {selected_port}"
+    if unknown_owner and not allow_unknown:
+        raise DevToolsListenerNotReady(
+            f"Windows could not identify the owner of DevTools port {selected_port}"
         )
+    return listener_pids
 
+
+def _validate_devtools_probe(psutil_module: Any, selected_port: int) -> None:
+    # Windows may omit LISTEN rows or report unknown owners. Verify only the
+    # server side of a held connection, never an unrelated ESTABLISHED/NONE row.
+    for host in ("127.0.0.1", "::1"):
+        try:
+            probe = socket.create_connection(
+                (host, selected_port), timeout=DEVTOOLS_PROBE_TIMEOUT_SECONDS
+            )
+        except OSError:
+            continue
+        with probe:
+            try:
+                client_address = _connection_address(probe.getsockname())
+                server_address = _connection_address(probe.getpeername())
+            except (OSError, psutil_module.Error) as exc:
+                raise LaunchError(
+                    "Windows could not verify the Amazon Music DevTools listener owner"
+                ) from exc
+            if (
+                server_address != (host, selected_port)
+                or client_address[0] not in LOOPBACK_HOSTS
+                or not 0 < client_address[1] <= 65535
+            ):
+                raise LaunchError("DevTools probe did not connect to the loopback endpoint")
+            deadline = time.monotonic() + DEVTOOLS_PROBE_DISCOVERY_SECONDS
+            while True:
+                try:
+                    connections = psutil_module.net_connections(kind="tcp")
+                except (OSError, psutil_module.Error) as exc:
+                    raise LaunchError(
+                        "Windows could not verify the Amazon Music DevTools listener owner"
+                    ) from exc
+                listener_pids = _devtools_listener_pids(
+                    connections, selected_port, allow_unknown=True
+                )
+                if listener_pids:
+                    _validate_devtools_listener_pids(
+                        psutil_module, selected_port, listener_pids
+                    )
+                probe_pids: set[int] = set()
+                for connection in connections:
+                    if (
+                        str(getattr(connection, "status", "")).upper() != "ESTABLISHED"
+                        or _connection_address(getattr(connection, "laddr", None))
+                        != server_address
+                        or _connection_address(getattr(connection, "raddr", None))
+                        != client_address
+                    ):
+                        continue
+                    process_id = _positive_process_id(getattr(connection, "pid", None))
+                    if process_id is None:
+                        raise LaunchError(
+                            f"Windows could not identify the owner of DevTools port {selected_port}"
+                        )
+                    probe_pids.add(process_id)
+                if len(probe_pids) > 1:
+                    raise LaunchError(
+                        f"Windows reported conflicting owners of DevTools port {selected_port}"
+                    )
+                if probe_pids:
+                    _validate_devtools_listener_pids(
+                        psutil_module, selected_port, probe_pids
+                    )
+                    return
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise DevToolsListenerNotReady(
+                        f"Windows could not find the listener owner for DevTools port {selected_port}"
+                    )
+                time.sleep(min(DEVTOOLS_PROBE_POLL_SECONDS, remaining))
+    raise DevToolsListenerNotReady(
+        f"Windows could not find the listener owner for DevTools port {selected_port}"
+    )
+
+
+def _validate_devtools_listener_pids(
+    psutil_module: Any, selected_port: int, listener_pids: set[int]
+) -> None:
     with _EXPECTED_LISTENERS_LOCK:
         now = time.monotonic()
         expected = _EXPECTED_LISTENERS.get(selected_port, {})
@@ -517,7 +621,7 @@ def validate_devtools_listener(port: int) -> None:
                 _EXPECTED_LISTENERS.pop(selected_port, None)
 
     for process_id in listener_pids:
-        if not _trusted_listener_process(psutil, process_id, expected_identities):
+        if not _trusted_listener_process(psutil_module, process_id, expected_identities):
             raise LaunchError(
                 f"DevTools port {selected_port} is owned by a non-Amazon process"
             )

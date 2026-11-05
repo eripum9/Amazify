@@ -13,7 +13,11 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from .config import DEVTOOLS_HOST
-from .launcher import LaunchError, validate_devtools_listener
+from .launcher import (
+    DevToolsListenerNotReady,
+    LaunchError,
+    validate_devtools_listener,
+)
 
 LOG = logging.getLogger(__name__)
 AMAZON_REGION_SUFFIXES = (
@@ -173,6 +177,10 @@ class DevToolsHttp:
             if target:
                 try:
                     validate_devtools_listener(self.port)
+                except DevToolsListenerNotReady as exc:
+                    last_error = exc
+                    time.sleep(0.5)
+                    continue
                 except LaunchError as exc:
                     raise DevToolsError(str(exc)) from exc
                 return target

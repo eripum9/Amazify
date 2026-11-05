@@ -188,7 +188,7 @@ class CliDevToolsPortTests(unittest.TestCase):
             main(["--version"])
 
         self.assertEqual(raised.exception.code, 0)
-        self.assertEqual(output.getvalue().strip(), "amazify 1.1.4")
+        self.assertEqual(output.getvalue().strip(), "amazify 1.1.5")
 
     def test_update_install_requires_available_verified_release(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

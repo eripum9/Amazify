@@ -1,5 +1,5 @@
 #define AppName "Amazify"
-#define AppVersion "1.1.4"
+#define AppVersion "1.1.5"
 #define AppPublisher "Amazify"
 #define AppExeName "amazify.exe"
 #define AppWindowedExeDir "amazifyw"

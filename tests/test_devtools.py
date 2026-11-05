@@ -16,7 +16,7 @@ from amazify.devtools import (
     is_amazon_music_target,
     valid_target_websocket,
 )
-from amazify.launcher import LaunchError
+from amazify.launcher import DevToolsListenerNotReady, LaunchError
 
 
 def make_client() -> DevToolsClient:
@@ -278,6 +278,38 @@ class DevToolsTargetSecurityTests(unittest.TestCase):
             self.assertRaisesRegex(DevToolsError, "listener rejected"),
         ):
             http.wait_for_amazon_music_target(timeout_seconds=0.1)
+
+    def test_wait_retries_when_listener_owner_is_not_ready(self) -> None:
+        target = make_target()
+        http = DevToolsHttp(61234)
+
+        with (
+            mock.patch.object(http, "list_targets", return_value=[target]),
+            mock.patch(
+                "amazify.devtools.validate_devtools_listener",
+                side_effect=[DevToolsListenerNotReady("owner not visible"), None],
+            ) as validate,
+            mock.patch("amazify.devtools.time.sleep"),
+        ):
+            selected = http.wait_for_amazon_music_target(timeout_seconds=1.0)
+
+        self.assertIs(selected, target)
+        self.assertEqual(validate.call_count, 2)
+
+    def test_wait_reports_last_listener_not_ready_error_at_deadline(self) -> None:
+        target = make_target()
+        http = DevToolsHttp(61234)
+
+        with (
+            mock.patch.object(http, "list_targets", return_value=[target]),
+            mock.patch(
+                "amazify.devtools.validate_devtools_listener",
+                side_effect=DevToolsListenerNotReady("owner not visible"),
+            ),
+            mock.patch("amazify.devtools.time.sleep"),
+            self.assertRaisesRegex(DevToolsError, "owner not visible"),
+        ):
+            http.wait_for_amazon_music_target(timeout_seconds=0.001)
 
 
 if __name__ == "__main__":
